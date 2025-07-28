@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
 
 const AstroClash: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -15,7 +16,7 @@ const AstroClash: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-black text-white touch-none">
+    <div className="w-full h-full flex items-center justify-center bg-black text-white touch-none relative">
       <GameCanvas />
     </div>
   );
@@ -28,7 +29,20 @@ const GameCanvas: React.FC = () => {
   const enemies = useRef<any[]>([]);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const gameLoopId = useRef<number>();
+  const [gameOver, setGameOver] = useState(false);
+  const [score, setScore] = useState(0);
 
+  const resetGame = () => {
+    if (canvasRef.current) {
+      playerPosition.current = { x: canvasRef.current.width / 2, y: canvasRef.current.height - 60 };
+    }
+    bullets.current = [];
+    enemies.current = [];
+    keysPressed.current = {};
+    setScore(0);
+    setGameOver(false);
+  };
+  
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -41,7 +55,10 @@ const GameCanvas: React.FC = () => {
     const context = canvas.getContext('2d');
     if (!context) return;
     
-    playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+    if (!gameOver) {
+        resetGame();
+    }
+    
 
     const drawPlayer = (ctx: CanvasRenderingContext2D) => {
       ctx.beginPath();
@@ -66,13 +83,20 @@ const GameCanvas: React.FC = () => {
             ctx.fillRect(enemy.x - 15, enemy.y - 15, 30, 30);
         });
     };
+
+    const drawScore = (ctx: CanvasRenderingContext2D) => {
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText(`Score: ${score}`, 20, 40);
+    };
     
     const shoot = () => {
+        if(gameOver) return;
         bullets.current.push({ x: playerPosition.current.x, y: playerPosition.current.y - 20 });
     }
 
     const gameLoop = () => {
-      if (!canvas) return;
+      if (!canvas || gameOver) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -86,48 +110,78 @@ const GameCanvas: React.FC = () => {
       }
 
       // Update bullets
-      bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 5 })).filter(b => b.y > 0);
+      bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 7 })).filter(b => b.y > 0);
       
       // Update enemies
       enemies.current.forEach(enemy => {
-          enemy.y += 1;
+          enemy.y += 2;
       });
       enemies.current = enemies.current.filter(e => e.y < canvas.height);
 
 
-      // Collision detection
-      const bulletsToRemove: number[] = [];
-      const enemiesToRemove: number[] = [];
+      // Collision detection: bullets and enemies
+      const newBullets = [];
+      const newEnemies = [];
+      let newScore = score;
 
-      bullets.current.forEach((bullet, bulletIndex) => {
-        enemies.current.forEach((enemy, enemyIndex) => {
-          if (
-            bullet.x > enemy.x - 15 &&
-            bullet.x < enemy.x + 15 &&
-            bullet.y > enemy.y - 15 &&
-            bullet.y < enemy.y + 15
-          ) {
-            bulletsToRemove.push(bulletIndex);
-            enemiesToRemove.push(enemyIndex);
+      for (const enemy of enemies.current) {
+        let enemyHit = false;
+        for (const bullet of bullets.current) {
+          const dx = bullet.x - enemy.x;
+          const dy = bullet.y - enemy.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 15 + 5) { // 15 is enemy radius, 5 is bullet radius
+            enemyHit = true;
+            // don't add bullet to newBullets
           }
-        });
+        }
+        if (enemyHit) {
+          newScore += 10;
+        } else {
+          newEnemies.push(enemy);
+        }
+      }
+      
+      bullets.current.forEach(bullet => {
+          let bulletHit = false;
+          enemies.current.forEach(enemy => {
+              const dx = bullet.x - enemy.x;
+              const dy = bullet.y - enemy.y;
+              if (Math.sqrt(dx * dx + dy * dy) < 15 + 5) {
+                  bulletHit = true;
+              }
+          });
+          if (!bulletHit) {
+              newBullets.push(bullet);
+          }
       });
+      
+      bullets.current = newBullets;
+      enemies.current = newEnemies;
+      if (newScore !== score) {
+        setScore(newScore);
+      }
 
-      // Remove bullets and enemies that have collided
-      // Iterate backwards to avoid index shifting issues
-      bulletsToRemove.reverse().forEach(index => bullets.current.splice(index, 1));
-      enemiesToRemove.reverse().forEach(index => enemies.current.splice(index, 1));
 
+      // Collision detection: player and enemies
+      for (const enemy of enemies.current) {
+        const dx = playerPosition.current.x - enemy.x;
+        const dy = playerPosition.current.y - enemy.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { // 20 is player radius, 15 is enemy radius
+            setGameOver(true);
+            break;
+        }
+      }
 
       drawPlayer(ctx);
       drawBullets(ctx);
       drawEnemies(ctx);
+      drawScore(ctx);
 
       gameLoopId.current = requestAnimationFrame(gameLoop);
     };
 
     const spawnEnemy = () => {
-        if (canvas) {
+        if (canvas && !gameOver) {
             const x = Math.random() * canvas.width;
             enemies.current.push({ x, y: 0 });
         }
@@ -139,12 +193,15 @@ const GameCanvas: React.FC = () => {
             canvasHeight = window.innerHeight;
             canvas.width = canvasWidth;
             canvas.height = canvasHeight;
-            playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+            if (!gameOver) {
+                playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+            }
         }
     }
 
     const handleTouchMove = (e: TouchEvent) => {
         e.preventDefault();
+        if (gameOver) return;
         if (e.touches.length > 0 && canvas) {
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
@@ -154,12 +211,14 @@ const GameCanvas: React.FC = () => {
     
     const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
+        if (gameOver) return;
         if (e.touches.length > 0) {
              shoot();
         }
     };
     
     const handleKeyDown = (e: KeyboardEvent) => {
+        if (gameOver) return;
         keysPressed.current[e.key] = true;
         if (e.key === ' ' || e.key === 'Spacebar') {
             e.preventDefault();
@@ -177,7 +236,7 @@ const GameCanvas: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const enemyInterval = setInterval(spawnEnemy, 2000);
+    const enemyInterval = setInterval(spawnEnemy, 1500);
     
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
@@ -194,9 +253,22 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, []);
+  }, [gameOver, score]);
 
-  return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
+  return (
+    <>
+      <canvas ref={canvasRef} className="touch-none w-full h-full" />
+      {gameOver && (
+        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10">
+          <h2 className="text-5xl font-bold mb-4">Game Over</h2>
+          <p className="text-2xl mb-8">Your Score: {score}</p>
+          <Button onClick={resetGame} size="lg">
+            Play Again
+          </Button>
+        </div>
+      )}
+    </>
+  )
 };
 
 export default AstroClash;
