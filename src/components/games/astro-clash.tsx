@@ -96,31 +96,37 @@ const GameCanvas: React.FC = () => {
 
 
       // Collision detection
-      const newBullets: any[] = [];
-      const newEnemies: any[] = [];
-      let enemiesHit: any = {};
+      const remainingBullets: any[] = [];
+      const remainingEnemies: any[] = [];
 
       bullets.current.forEach((bullet) => {
         let hit = false;
-        enemies.current.forEach((enemy, eIndex) => {
-          if (!enemiesHit[eIndex] && Math.abs(bullet.x - enemy.x) < 17 && Math.abs(bullet.y - enemy.y) < 25) {
+        enemies.current.forEach((enemy) => {
+          if (
+            !enemy.hit &&
+            bullet.x > enemy.x - 15 &&
+            bullet.x < enemy.x + 15 &&
+            bullet.y > enemy.y - 15 &&
+            bullet.y < enemy.y + 15
+          ) {
             hit = true;
-            enemiesHit[eIndex] = true;
+            enemy.hit = true;
           }
         });
-        if (!hit) {
-          newBullets.push(bullet);
-        }
-      });
 
-      enemies.current.forEach((enemy, eIndex) => {
-        if (!enemiesHit[eIndex]) {
-          newEnemies.push(enemy);
+        if (!hit) {
+          remainingBullets.push(bullet);
         }
       });
       
-      bullets.current = newBullets;
-      enemies.current = newEnemies;
+      enemies.current.forEach((enemy) => {
+        if (!enemy.hit) {
+          remainingEnemies.push(enemy);
+        }
+      });
+      
+      bullets.current = remainingBullets;
+      enemies.current = remainingEnemies;
 
 
       drawPlayer(ctx);
@@ -133,7 +139,7 @@ const GameCanvas: React.FC = () => {
     const spawnEnemy = () => {
         if (canvas) {
             const x = Math.random() * canvas.width;
-            enemies.current.push({ x, y: 0 });
+            enemies.current.push({ x, y: 0, hit: false });
         }
     };
 
