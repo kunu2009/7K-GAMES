@@ -38,7 +38,7 @@ export default function RootLayout({
           </Sidebar>
           <SidebarInset>
             <Header />
-            <main className="flex-1 p-4 md:p-6">{children}</main>
+            <main className="flex-1 p-4 md:p-6 h-[calc(100vh-4rem)]">{children}</main>
           </SidebarInset>
         </SidebarProvider>
         <Toaster />
