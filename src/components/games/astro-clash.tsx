@@ -4,15 +4,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 const AstroClash: React.FC = () => {
-    const [isClient, setIsClient] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
-    useEffect(() => {
-        setIsClient(true);
-    }, []);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-    if (!isClient) {
-        return null; // Or a loading spinner
-    }
+  if (!isClient) {
+    return null; // Or a loading spinner
+  }
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-black text-white touch-none">
@@ -27,13 +27,17 @@ const GameCanvas: React.FC = () => {
   const bullets = useRef<any[]>([]);
   const enemies = useRef<any[]>([]);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
+  const gameLoopId = useRef<number>();
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    
+    let canvasWidth = window.innerWidth;
+    let canvasHeight = window.innerHeight;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
     const context = canvas.getContext('2d');
     if (!context) return;
     
@@ -68,50 +72,84 @@ const GameCanvas: React.FC = () => {
     }
 
     const gameLoop = () => {
-        if (!canvas) return;
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Player movement
-        if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
-            playerPosition.current.x -= 5;
-        }
-        if (keysPressed.current['ArrowRight'] && playerPosition.current.x < canvas.width - 20) {
-            playerPosition.current.x += 5;
-        }
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Player movement
+      if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
+          playerPosition.current.x -= 5;
+      }
+      if (keysPressed.current['ArrowRight'] && playerPosition.current.x < canvas.width - 20) {
+          playerPosition.current.x += 5;
+      }
 
-        // Update bullets
-        bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 5 })).filter(b => b.y > 0);
-        
-        // Update enemies
-        enemies.current.forEach(enemy => {
-            enemy.y += 1;
+      // Update bullets
+      bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 5 })).filter(b => b.y > 0);
+      
+      // Update enemies
+      enemies.current.forEach(enemy => {
+          enemy.y += 1;
+      });
+      enemies.current = enemies.current.filter(e => e.y < canvas.height);
+
+
+      // Collision detection
+      const newBullets: any[] = [];
+      const newEnemies: any[] = [];
+      let enemiesHit: any = {};
+
+      bullets.current.forEach((bullet) => {
+        let hit = false;
+        enemies.current.forEach((enemy, eIndex) => {
+          if (!enemiesHit[eIndex] && Math.abs(bullet.x - enemy.x) < 17 && Math.abs(bullet.y - enemy.y) < 25) {
+            hit = true;
+            enemiesHit[eIndex] = true;
+          }
         });
+        if (!hit) {
+          newBullets.push(bullet);
+        }
+      });
 
-        // Collision detection
-        bullets.current.forEach((bullet, bIndex) => {
-            enemies.current.forEach((enemy, eIndex) => {
-                if (Math.abs(bullet.x - enemy.x) < 15 && Math.abs(bullet.y - enemy.y) < 15) {
-                    bullets.current.splice(bIndex, 1);
-                    enemies.current.splice(eIndex, 1);
-                }
-            });
-        });
+      enemies.current.forEach((enemy, eIndex) => {
+        if (!enemiesHit[eIndex]) {
+          newEnemies.push(enemy);
+        }
+      });
+      
+      bullets.current = newBullets;
+      enemies.current = newEnemies;
 
-        drawPlayer(context);
-        drawBullets(context);
-        drawEnemies(context);
 
-        requestAnimationFrame(gameLoop);
+      drawPlayer(ctx);
+      drawBullets(ctx);
+      drawEnemies(ctx);
+
+      gameLoopId.current = requestAnimationFrame(gameLoop);
     };
 
     const spawnEnemy = () => {
-        const x = Math.random() * canvas.width;
-        enemies.current.push({ x, y: 0 });
+        if (canvas) {
+            const x = Math.random() * canvas.width;
+            enemies.current.push({ x, y: 0 });
+        }
     };
+
+    const handleResize = () => {
+        if(canvas) {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+        }
+    }
 
     const handleTouchMove = (e: TouchEvent) => {
         e.preventDefault();
-        if (e.touches.length > 0) {
+        if (e.touches.length > 0 && canvas) {
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
             playerPosition.current.x = touch.clientX - rect.left;
@@ -127,7 +165,7 @@ const GameCanvas: React.FC = () => {
     
     const handleKeyDown = (e: KeyboardEvent) => {
         keysPressed.current[e.key] = true;
-        if (e.key === ' ') {
+        if (e.key === ' ' || e.key === 'Spacebar') {
             e.preventDefault();
             shoot();
         }
@@ -137,6 +175,7 @@ const GameCanvas: React.FC = () => {
         keysPressed.current[e.key] = false;
     };
 
+    window.addEventListener('resize', handleResize);
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     window.addEventListener('keydown', handleKeyDown);
@@ -144,18 +183,24 @@ const GameCanvas: React.FC = () => {
 
     const enemyInterval = setInterval(spawnEnemy, 2000);
     
-    gameLoop();
+    gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
-        canvas.removeEventListener('touchmove', handleTouchMove);
-        canvas.removeEventListener('touchstart', handleTouchStart);
+        if (gameLoopId.current) {
+            cancelAnimationFrame(gameLoopId.current);
+        }
+        window.removeEventListener('resize', handleResize);
+        if (canvas) {
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchstart', handleTouchStart);
+        }
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="touch-none" />;
+  return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default AstroClash;
