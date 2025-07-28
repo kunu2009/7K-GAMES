@@ -47,6 +47,7 @@ const GameCanvas: React.FC = () => {
   const gameLoopId = useRef<number>();
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
+  const shootTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const createExplosion = (x: number, y: number) => {
     explosions.current.push({ x, y, radius: 30, alpha: 1 });
@@ -89,11 +90,7 @@ const GameCanvas: React.FC = () => {
     }
     
     if (!gameOver) {
-      if (score !== 0) {
-        resetGame();
-      } else {
         playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
-      }
     }
     
     const drawPlayer = (ctx: CanvasRenderingContext2D) => {
@@ -231,7 +228,6 @@ const GameCanvas: React.FC = () => {
       // Collision detection: bullets and enemies
       const newBullets = [];
       let newEnemies = [...enemies.current];
-      let scoreToAdd = 0;
 
       for(const bullet of bullets.current) {
         let bulletHit = false;
@@ -243,7 +239,7 @@ const GameCanvas: React.FC = () => {
                 bulletHit = true;
                 createExplosion(enemy.x, enemy.y);
                 newEnemies.splice(i, 1);
-                scoreToAdd += 10;
+                setScore(prevScore => prevScore + 10);
                 break; 
             }
         }
@@ -254,9 +250,6 @@ const GameCanvas: React.FC = () => {
       
       bullets.current = newBullets;
       enemies.current = newEnemies;
-      if (scoreToAdd > 0) {
-        setScore(prevScore => prevScore + scoreToAdd);
-      }
 
 
       // Collision detection: player and enemies
@@ -325,15 +318,14 @@ const GameCanvas: React.FC = () => {
         }
     };
     
-    let shootTimeout: NodeJS.Timeout | null = null;
     const handleKeyDown = (e: KeyboardEvent) => {
         if (gameOver) return;
         keysPressed.current[e.key] = true;
-        if ((e.key === ' ' || e.key === 'Spacebar') && !shootTimeout) {
+        if ((e.key === ' ' || e.key === 'Spacebar') && !shootTimeout.current) {
             e.preventDefault();
             shoot();
-            shootTimeout = setTimeout(() => {
-                shootTimeout = null;
+            shootTimeout.current = setTimeout(() => {
+                shootTimeout.current = null;
             }, 150); // Fire rate limit
         }
     };
@@ -356,8 +348,8 @@ const GameCanvas: React.FC = () => {
         if (gameLoopId.current) {
             cancelAnimationFrame(gameLoopId.current);
         }
-        if (shootTimeout) {
-            clearTimeout(shootTimeout);
+        if (shootTimeout.current) {
+            clearTimeout(shootTimeout.current);
         }
         window.removeEventListener('resize', handleResize);
         if (canvas) {
@@ -387,5 +379,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default AstroClash;
-
-    
