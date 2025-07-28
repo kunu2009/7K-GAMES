@@ -96,37 +96,27 @@ const GameCanvas: React.FC = () => {
 
 
       // Collision detection
-      const remainingBullets: any[] = [];
-      const remainingEnemies: any[] = [];
+      const bulletsToRemove: number[] = [];
+      const enemiesToRemove: number[] = [];
 
-      bullets.current.forEach((bullet) => {
-        let hit = false;
-        enemies.current.forEach((enemy) => {
+      bullets.current.forEach((bullet, bulletIndex) => {
+        enemies.current.forEach((enemy, enemyIndex) => {
           if (
-            !enemy.hit &&
             bullet.x > enemy.x - 15 &&
             bullet.x < enemy.x + 15 &&
             bullet.y > enemy.y - 15 &&
             bullet.y < enemy.y + 15
           ) {
-            hit = true;
-            enemy.hit = true;
+            bulletsToRemove.push(bulletIndex);
+            enemiesToRemove.push(enemyIndex);
           }
         });
+      });
 
-        if (!hit) {
-          remainingBullets.push(bullet);
-        }
-      });
-      
-      enemies.current.forEach((enemy) => {
-        if (!enemy.hit) {
-          remainingEnemies.push(enemy);
-        }
-      });
-      
-      bullets.current = remainingBullets;
-      enemies.current = remainingEnemies;
+      // Remove bullets and enemies that have collided
+      // Iterate backwards to avoid index shifting issues
+      bulletsToRemove.reverse().forEach(index => bullets.current.splice(index, 1));
+      enemiesToRemove.reverse().forEach(index => enemies.current.splice(index, 1));
 
 
       drawPlayer(ctx);
@@ -139,7 +129,7 @@ const GameCanvas: React.FC = () => {
     const spawnEnemy = () => {
         if (canvas) {
             const x = Math.random() * canvas.width;
-            enemies.current.push({ x, y: 0, hit: false });
+            enemies.current.push({ x, y: 0 });
         }
     };
 
