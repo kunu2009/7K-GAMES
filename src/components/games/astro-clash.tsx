@@ -26,6 +26,7 @@ const GameCanvas: React.FC = () => {
   const playerPosition = useRef({ x: 0, y: 0 });
   const bullets = useRef<any[]>([]);
   const enemies = useRef<any[]>([]);
+  const keysPressed = useRef<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -61,10 +62,23 @@ const GameCanvas: React.FC = () => {
             ctx.fillRect(enemy.x - 15, enemy.y - 15, 30, 30);
         });
     };
+    
+    const shoot = () => {
+        bullets.current.push({ x: playerPosition.current.x, y: playerPosition.current.y - 20 });
+    }
 
     const gameLoop = () => {
+        if (!canvas) return;
         context.clearRect(0, 0, canvas.width, canvas.height);
         
+        // Player movement
+        if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
+            playerPosition.current.x -= 5;
+        }
+        if (keysPressed.current['ArrowRight'] && playerPosition.current.x < canvas.width - 20) {
+            playerPosition.current.x += 5;
+        }
+
         // Update bullets
         bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 5 })).filter(b => b.y > 0);
         
@@ -107,12 +121,26 @@ const GameCanvas: React.FC = () => {
     const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
         if (e.touches.length > 0) {
-             bullets.current.push({ x: playerPosition.current.x, y: playerPosition.current.y - 20 });
+             shoot();
         }
+    };
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+        keysPressed.current[e.key] = true;
+        if (e.key === ' ') {
+            e.preventDefault();
+            shoot();
+        }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+        keysPressed.current[e.key] = false;
     };
 
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 
     const enemyInterval = setInterval(spawnEnemy, 2000);
     
@@ -121,6 +149,8 @@ const GameCanvas: React.FC = () => {
     return () => {
         canvas.removeEventListener('touchmove', handleTouchMove);
         canvas.removeEventListener('touchstart', handleTouchStart);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
   }, []);

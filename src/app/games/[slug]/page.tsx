@@ -40,15 +40,6 @@ export default function GamePage() {
     return <div>Game not found</div>;
   }
 
-  if (!isMobile) {
-    return (
-        <div className="flex flex-col items-center justify-center h-full text-center">
-            <h2 className="text-2xl font-bold mb-4">Mobiles Only</h2>
-            <p className="text-muted-foreground">This game is designed to be played on mobile devices.</p>
-        </div>
-    )
-  }
-
   return (
     <div className={`w-full h-full ${isFullScreen ? 'fixed inset-0 z-50 bg-background' : 'relative'}`}>
       <div className="absolute top-2 right-2 z-50">
