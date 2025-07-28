@@ -56,7 +56,11 @@ const GameCanvas: React.FC = () => {
     if (!context) return;
     
     if (!gameOver) {
+      if (score !== 0) { // Only reset if it's a restart, not initial load
         resetGame();
+      } else {
+        playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+      }
     }
     
 
@@ -121,44 +125,31 @@ const GameCanvas: React.FC = () => {
 
       // Collision detection: bullets and enemies
       const newBullets = [];
-      const newEnemies = [];
-      let newScore = score;
+      let newEnemies = [...enemies.current];
+      let scoreToAdd = 0;
 
-      for (const enemy of enemies.current) {
-        let enemyHit = false;
-        for (const bullet of bullets.current) {
-          const dx = bullet.x - enemy.x;
-          const dy = bullet.y - enemy.y;
-          if (Math.sqrt(dx * dx + dy * dy) < 15 + 5) { // 15 is enemy radius, 5 is bullet radius
-            enemyHit = true;
-            // don't add bullet to newBullets
-          }
+      for(const bullet of bullets.current) {
+        let bulletHit = false;
+        for (let i = newEnemies.length - 1; i >= 0; i--) {
+            const enemy = newEnemies[i];
+            const dx = bullet.x - enemy.x;
+            const dy = bullet.y - enemy.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 15 + 5) { // 15 is enemy radius, 5 is bullet radius
+                bulletHit = true;
+                newEnemies.splice(i, 1);
+                scoreToAdd += 10;
+                break; 
+            }
         }
-        if (enemyHit) {
-          newScore += 10;
-        } else {
-          newEnemies.push(enemy);
+        if (!bulletHit) {
+            newBullets.push(bullet);
         }
       }
       
-      bullets.current.forEach(bullet => {
-          let bulletHit = false;
-          enemies.current.forEach(enemy => {
-              const dx = bullet.x - enemy.x;
-              const dy = bullet.y - enemy.y;
-              if (Math.sqrt(dx * dx + dy * dy) < 15 + 5) {
-                  bulletHit = true;
-              }
-          });
-          if (!bulletHit) {
-              newBullets.push(bullet);
-          }
-      });
-      
       bullets.current = newBullets;
       enemies.current = newEnemies;
-      if (newScore !== score) {
-        setScore(newScore);
+      if (scoreToAdd > 0) {
+        setScore(prevScore => prevScore + scoreToAdd);
       }
 
 
@@ -236,7 +227,7 @@ const GameCanvas: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const enemyInterval = setInterval(spawnEnemy, 1500);
+    const enemyInterval = setInterval(spawnEnemy, 1000);
     
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
@@ -253,7 +244,7 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, [gameOver, score]);
+  }, [gameOver]);
 
   return (
     <>
