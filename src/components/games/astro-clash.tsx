@@ -46,7 +46,7 @@ const GameCanvas: React.FC = () => {
   const stars = useRef<Star[]>([]);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const gameLoopId = useRef<number>();
-  const [gameOver, setGameOver] = useState(false);
+  const [gameOver, setGameOver] = useState(true);
   const [score, setScore] = useState(0);
   const shootTimeout = useRef<NodeJS.Timeout | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -67,9 +67,7 @@ const GameCanvas: React.FC = () => {
     playSound(explosionSoundRef);
   }, [playSound]);
   
-  const resetGame = useCallback(() => {
-    setGameOver(false);
-    setScore(0);
+  const startGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (canvas) {
       playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
@@ -78,6 +76,8 @@ const GameCanvas: React.FC = () => {
     enemies.current = [];
     explosions.current = [];
     keysPressed.current = {};
+    setScore(0);
+    setGameOver(false);
   }, []);
   
   useEffect(() => {
@@ -103,7 +103,10 @@ const GameCanvas: React.FC = () => {
       }
     }
     
-    resetGame();
+    // Initial state is game over screen
+    if(gameOver) {
+        setGameOver(true);
+    }
     
     const drawPlayer = (ctx: CanvasRenderingContext2D) => {
       ctx.save();
@@ -178,20 +181,22 @@ const GameCanvas: React.FC = () => {
     };
     
     const drawExplosions = (ctx: CanvasRenderingContext2D) => {
-        explosions.current = explosions.current.filter((exp) => exp.alpha > 0);
-        explosions.current.forEach((exp) => {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(255, 165, 0, ${exp.alpha})`;
-            ctx.strokeStyle = `rgba(255, 255, 0, ${exp.alpha})`;
-            ctx.lineWidth = 2;
-            ctx.fill();
-            ctx.stroke();
-            ctx.restore();
-            
+        explosions.current.forEach((exp, index) => {
             exp.alpha -= 0.05;
             exp.radius += 0.5;
+            if (exp.alpha <= 0) {
+                explosions.current.splice(index, 1);
+            } else {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 165, 0, ${exp.alpha})`;
+                ctx.strokeStyle = `rgba(255, 255, 0, ${exp.alpha})`;
+                ctx.lineWidth = 2;
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
         });
     };
     
@@ -224,49 +229,43 @@ const GameCanvas: React.FC = () => {
           playerPosition.current.x += 7;
       }
 
-      // Update bullet positions and remove off-screen bullets
-      bullets.current.forEach(b => b.y -= 10);
-      bullets.current = bullets.current.filter(b => b.y > 0);
+      // Update bullet positions
+      for(let i = bullets.current.length - 1; i >= 0; i--) {
+        const bullet = bullets.current[i];
+        bullet.y -= 10;
+        if(bullet.y < 0) {
+            bullets.current.splice(i, 1);
+        }
+      }
       
-      // Update enemy positions and remove off-screen enemies
-      enemies.current.forEach(enemy => {
-          enemy.y += 2.5;
-      });
-      enemies.current = enemies.current.filter(e => e.y < canvasRef.current.height);
-
-      // --- Collision Detection ---
-      const remainingBullets = [];
-      const remainingEnemies = [];
-      
-      // Check bullet-enemy collisions
-      for (const bullet of bullets.current) {
-          let bulletHit = false;
-          for (const enemy of enemies.current) {
-              if (enemy.collided) continue;
-              const dx = bullet.x - enemy.x;
-              const dy = bullet.y - enemy.y;
-              if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { 
-                  bulletHit = true;
-                  enemy.collided = true; // Mark enemy as collided
-                  createExplosion(enemy.x, enemy.y);
-                  setScore(prev => prev + 10);
-                  break; 
-              }
-          }
-          if (!bulletHit) {
-              remainingBullets.push(bullet);
-          }
+      // Update enemy positions
+      for(let i = enemies.current.length - 1; i >= 0; i--) {
+        const enemy = enemies.current[i];
+        enemy.y += 2.5;
+        if(enemy.y > canvasRef.current.height) {
+            enemies.current.splice(i, 1);
+        }
       }
 
-      // Filter out collided enemies
-      enemies.current.forEach(enemy => {
-          if (!enemy.collided) {
-              remainingEnemies.push(enemy);
+      // --- Collision Detection ---
+      // Check bullet-enemy collisions
+      for (let i = enemies.current.length - 1; i >= 0; i--) {
+        for (let j = bullets.current.length - 1; j >= 0; j--) {
+          const enemy = enemies.current[i];
+          const bullet = bullets.current[j];
+          if(enemy && bullet){
+            const dx = bullet.x - enemy.x;
+            const dy = bullet.y - enemy.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { 
+              createExplosion(enemy.x, enemy.y);
+              enemies.current.splice(i, 1);
+              bullets.current.splice(j, 1);
+              setScore(prev => prev + 10);
+              break; 
+            }
           }
-      });
-      
-      bullets.current = remainingBullets;
-      enemies.current = remainingEnemies;
+        }
+      }
       
       // Check player-enemy collision
       for (const enemy of enemies.current) {
@@ -293,7 +292,7 @@ const GameCanvas: React.FC = () => {
     const spawnEnemy = () => {
         if (canvasRef.current && !gameOver) {
             const x = Math.random() * (canvasRef.current.width - 40) + 20;
-            enemies.current.push({ x, y: 0, collided: false });
+            enemies.current.push({ x, y: 0 });
         }
     };
 
@@ -342,7 +341,7 @@ const GameCanvas: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (gameOver && e.key !== 'Enter') return;
         if (e.key === 'Enter' && gameOver) {
-            resetGame();
+            startGame();
             return;
         }
         keysPressed.current[e.key] = true;
@@ -385,13 +384,13 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, [gameOver, score, resetGame, playSound, createExplosion]);
+  }, [gameOver, score, startGame, playSound, createExplosion]);
 
   return (
     <>
       <audio ref={shootSoundRef} src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAA//8/f/3/9v/e/6D/wf9g/13/MP8x/zT/Qf9r/2b/Uv9C/zb/Jv8j/yH/Gv8g/yY/LD/H/8f/q/+O/4X/b/9r/17/Yf9t/3r/hf+d/6n/vf/F/8P/uP+t/6D/mv+W/5L/kv+V/5r/oP+l/6j/q/+q/6j/p/+h/6D/n/+d/5r/mf+X/5T/lP+U/5X/mP+b/5//ov+p/6z/uf+9/8H/w/+9/7f/s/+u/6v/qf+m/6T/pP+n/6n/rP+x/7b/uv+8/7//wP/A/8D/v/+7/7n/t/+0/7L/r/+t/6//sP+z/7f/uv+8/8D/xP/G/8X/w//A/7//u/+5/7f/t/+0/7P/sv+x/7H/s/+1/7f/uf+7/7z/vf+9/73/vf+8/7r/uf+2/7P/r/+t/6v/qP+m/6T/pP+n/6k=" preload="auto"></audio>
       <audio ref={explosionSoundRef} src="data:audio/wav;base64,UklGRiIAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQwAAAD8/vr+7f71/Pr88vz2/On85vzc/OD82vzV/NL8yvzC+7j5qPg79of0MvH/64frEuj/5O3mMeX/4pnhKeB/2xLaK9cr1S/NKcxsyPjE+sL6t/qg+IL4JfiU+Jr4nfiV+IL4bPhc+Gf4fPiI+Jb4mPim+KX4pPif+J74nvif+Jz4lviJ+IT4hPiD+ID4f/h++Hb4c/hy+G74a/hp+Gn4avht+G/4dPh5+Hz4fviB+If4jfiZ+K74s/i++MH4zvnV+f76gPudaJHUx+u86Mzh9+FW3uTYGtiZyPrC9Kz3mvys/bMAJQEzAS4BHwEaAQ0BCQELAQwBCwELAQwBDQEPAFcBWgGTAX4BjwGRAYoBfwF4AVsBSgE8ASQBDQDx/sX+vf6//qr+mv6U/pf+mv6n/rP+w/7X/uv++/8UAxIDJgMwAzIDNAMqAyYDJQMiAx4DGwMaAxkDGAN4/tr+z/7K/sn+w/6v/qT+n/6d/p3+oP6l/qz+tP7A/sr+2f7s/voA/wHDAdoB5AHoAesB6AHkAd8B1wHPAckBwwG5AbQBpAGZAT4A5v/V/9T/yf/F/8T/wv/C/8L/x//S/9n/4v/n/+z/9f/6AAMBBAEHAAwADwAOAA4ADQAJAAUAAQAEAAwADQAPABIAFgAWABQAEgAQAA0ACwALAA0ADwARABMAFQAXABkAGwAbABsAGgAYABQAEQAPAA4ADQAOAA8AEQATABYAGQAcAB4AIAAhAB8AHQAZABYAFAASABAADgANAA4AEAAQABAAEAAPAA0ACwAKAAoACgAKAAoACQAI" preload="auto"></audio>
-      <audio ref={gameOverSoundRef} src="data:audio/wav;base64,UklGRjoAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRoAAADD/sL+v/7G/sv+2/7l/v3//QEJAScBMQFEAV4BkgGdAagBsgHMAdEB2wHbAdQBzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOgc+B0IHUgdmB3IHiAeQB6QHqAesB6gHnAeIB2wHRAckBqgGeAR8A7/6r/pj+mf6c/p/+qP7D/uH/BQAfAC8ASQBeAGgAZQBcAEcANgAhABD/8/2M/pD+VPw4+zH6Q/pb+xL8Nf0z/fsBBAIiAyUDRgPl/ff91/2h/bb9z/4b/oX9uP0N/M78zPzO/M78xPzB+777sPuq+qD6k/i39171ovNb8sTzNfQz9Vb3hPoP/JL84f0N/gMCBQMAAP/+/er7zfuK+5f7mvuo+qb6l/mX+Iz4QPdE9U30P/O68ZXxbvFk8U3xQ/F38W3xevGA8ZrycvN39PX1i/eO+Rr8LQDm/tb+pP6J/nUAJgCJAaYB8wIOA0sB1wHoAfwB/AH5AekB0AGzAZQBQwDP/sL+u/6k/pz+o/6l/q/+uP7B/sn+0f7b/uL+8f76/v3//gACAAQABgAHAAYABQADAAEAAQABAAIAAQAAAAEAAAAA" preload="auto"></audio>
+      <audio ref={gameOverSoundRef} src="data:audio/wav;base64,UklGRjoAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRoAAADD/sL+v/7G/sv+2/7l/v3//QEJAScBMQFEAV4BkgGdAagBsgHMAdEB2wHbAdQBzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOgc+B0IHUgdmB3IHiAeQB6QHqAesB6gHnAeIB2wHRAckBqgGeAR8A7/6r/pj+mf6c/p/+qP7D/uH/BQAfAC8ASQBeAGgAZQBcAEcANgAhABD/8/2M/pD+VPw4+zH6Q/pb+xL8Nf0z/fsBBAIiAyUDRgPl/ff91/2h/bb9z/4b/oX9uP0N/M78zPzO/M78xPzB+777sPuq+qD6k/i39171ovNb8sTzNfQz9Vb3hPoP/JL84f0N/gMCBQMAAP/+/er7zfuK+5f7mvuo+qb6l/mX+Iz4QPdE9U30P/O68ZXxbvFk8U3xQ/F38W3xevGA8ZrycvN39PX1i/eO+Rr8LQDm/tb+pP6J/nUAJgCJAaYB8wIOA0sB1wHoAfwB/AH5AekB0AGzAZQBQwDP/sL+u/6k/pz+o/6l/q/+uP7B/sn+0f7b/uL+8f76/v3//gACAAQABgAHAAYABQADAAEAAQABAAIAAQAAAAEAAAAA" preload="auto"></audio>
       
       <div className="absolute top-2 left-2 z-10">
         <Button onClick={() => setIsMuted(prev => !prev)} variant="ghost" size="icon">
@@ -402,10 +401,10 @@ const GameCanvas: React.FC = () => {
       <canvas ref={canvasRef} className="touch-none w-full h-full" />
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
-          <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Game Over</h2>
-          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Your Score: {score}</p>
-          <Button onClick={resetGame} size="lg" variant="secondary" className="text-lg">
-            Play Again
+          <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? "Game Over" : "Astro Clash"}</h2>
+          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? `Your Score: ${score}` : "Use Arrow Keys to Move, Space to Shoot"}</p>
+          <Button onClick={startGame} size="lg" variant="secondary" className="text-lg">
+            {score > 0 ? "Play Again" : "Start Game"}
           </Button>
         </div>
       )}
