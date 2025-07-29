@@ -178,7 +178,8 @@ const GameCanvas: React.FC = () => {
     };
     
     const drawExplosions = (ctx: CanvasRenderingContext2D) => {
-        explosions.current.forEach((exp, index) => {
+        explosions.current = explosions.current.filter((exp) => exp.alpha > 0);
+        explosions.current.forEach((exp) => {
             ctx.save();
             ctx.beginPath();
             ctx.arc(exp.x, exp.y, exp.radius, 0, Math.PI * 2);
@@ -191,10 +192,6 @@ const GameCanvas: React.FC = () => {
             
             exp.alpha -= 0.05;
             exp.radius += 0.5;
-
-            if (exp.alpha <= 0) {
-                explosions.current.splice(index, 1);
-            }
         });
     };
     
@@ -219,6 +216,7 @@ const GameCanvas: React.FC = () => {
         return;
       }
       
+      // Update player position
       if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
           playerPosition.current.x -= 7;
       }
@@ -226,38 +224,51 @@ const GameCanvas: React.FC = () => {
           playerPosition.current.x += 7;
       }
 
-      bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 10 })).filter(b => b.y > 0);
+      // Update bullet positions and remove off-screen bullets
+      bullets.current.forEach(b => b.y -= 10);
+      bullets.current = bullets.current.filter(b => b.y > 0);
       
+      // Update enemy positions and remove off-screen enemies
       enemies.current.forEach(enemy => {
           enemy.y += 2.5;
       });
       enemies.current = enemies.current.filter(e => e.y < canvasRef.current.height);
 
-
-      const newBullets = [];
-      const newEnemies = [...enemies.current];
+      // --- Collision Detection ---
+      const remainingBullets = [];
+      const remainingEnemies = [];
       
+      // Check bullet-enemy collisions
       for (const bullet of bullets.current) {
           let bulletHit = false;
-          for (let i = newEnemies.length - 1; i >= 0; i--) {
-              const enemy = newEnemies[i];
+          for (const enemy of enemies.current) {
+              if (enemy.collided) continue;
               const dx = bullet.x - enemy.x;
               const dy = bullet.y - enemy.y;
               if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { 
                   bulletHit = true;
+                  enemy.collided = true; // Mark enemy as collided
                   createExplosion(enemy.x, enemy.y);
-                  newEnemies.splice(i, 1);
                   setScore(prev => prev + 10);
                   break; 
               }
           }
           if (!bulletHit) {
-              newBullets.push(bullet);
+              remainingBullets.push(bullet);
           }
       }
-      bullets.current = newBullets;
-      enemies.current = newEnemies;
 
+      // Filter out collided enemies
+      enemies.current.forEach(enemy => {
+          if (!enemy.collided) {
+              remainingEnemies.push(enemy);
+          }
+      });
+      
+      bullets.current = remainingBullets;
+      enemies.current = remainingEnemies;
+      
+      // Check player-enemy collision
       for (const enemy of enemies.current) {
         const dx = playerPosition.current.x - enemy.x;
         const dy = playerPosition.current.y - enemy.y;
@@ -269,6 +280,7 @@ const GameCanvas: React.FC = () => {
         }
       }
 
+      // --- Drawing ---
       drawPlayer(ctx);
       drawBullets(ctx);
       drawEnemies(ctx);
@@ -281,7 +293,7 @@ const GameCanvas: React.FC = () => {
     const spawnEnemy = () => {
         if (canvasRef.current && !gameOver) {
             const x = Math.random() * (canvasRef.current.width - 40) + 20;
-            enemies.current.push({ x, y: 0 });
+            enemies.current.push({ x, y: 0, collided: false });
         }
     };
 
