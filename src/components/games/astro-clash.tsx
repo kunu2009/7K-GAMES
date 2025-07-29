@@ -1,8 +1,9 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Volume2, VolumeX } from 'lucide-react';
 
 type Star = {
   x: number;
@@ -48,12 +49,25 @@ const GameCanvas: React.FC = () => {
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const shootTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+
+  const shootSoundRef = useRef<HTMLAudioElement>(null);
+  const explosionSoundRef = useRef<HTMLAudioElement>(null);
+  const gameOverSoundRef = useRef<HTMLAudioElement>(null);
+
+  const playSound = (soundRef: React.RefObject<HTMLAudioElement>) => {
+    if (!isMuted && soundRef.current) {
+      soundRef.current.currentTime = 0;
+      soundRef.current.play().catch(e => console.error("Error playing sound:", e));
+    }
+  };
 
   const createExplosion = (x: number, y: number) => {
     explosions.current.push({ x, y, radius: 30, alpha: 1 });
+    playSound(explosionSoundRef);
   };
-
-  const resetGame = () => {
+  
+  const resetGame = useCallback(() => {
     if (canvasRef.current) {
       playerPosition.current = { x: canvasRef.current.width / 2, y: canvasRef.current.height - 60 };
     }
@@ -63,7 +77,7 @@ const GameCanvas: React.FC = () => {
     keysPressed.current = {};
     setScore(0);
     setGameOver(false);
-  };
+  }, []);
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,9 +103,7 @@ const GameCanvas: React.FC = () => {
       }
     }
     
-    if (!gameOver) {
-        playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
-    }
+    resetGame();
     
     const drawPlayer = (ctx: CanvasRenderingContext2D) => {
       ctx.save();
@@ -190,6 +202,7 @@ const GameCanvas: React.FC = () => {
     const shoot = () => {
         if(gameOver) return;
         bullets.current.push({ x: playerPosition.current.x, y: playerPosition.current.y - 25 });
+        playSound(shootSoundRef);
     }
 
     const gameLoop = () => {
@@ -258,6 +271,7 @@ const GameCanvas: React.FC = () => {
         const dy = playerPosition.current.y - enemy.y;
         if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { // player radius + enemy radius
             createExplosion(playerPosition.current.x, playerPosition.current.y);
+            playSound(gameOverSoundRef);
             setGameOver(true);
             break;
         }
@@ -340,7 +354,7 @@ const GameCanvas: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const enemyInterval = setInterval(spawnEnemy, 900);
+    const enemyInterval = setInterval(spawnEnemy, 800);
     
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
@@ -360,10 +374,20 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, [gameOver]);
+  }, [gameOver, score, resetGame]);
 
   return (
     <>
+      <audio ref={shootSoundRef} src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAA//8/f/3/9v/e/6D/wf9g/13/MP8x/zT/Qf9r/2b/Uv9C/zb/Jv8j/yH/Gv8g/yY/LD/H/8f/q/+O/4X/b/9r/17/Yf9t/3r/hf+d/6n/vf/F/8P/uP+t/6D/mv+W/5L/kv+V/5r/oP+l/6j/q/+q/6j/p/+h/6D/n/+d/5r/mf+X/5T/lP+U/5X/mP+b/5//ov+p/6z/uf+9/8H/w/+9/7f/s/+u/6v/qf+m/6T/pP+n/6n/rP+x/7b/uv+8/7//wP/A/8D/v/+7/7n/t/+0/7L/r/+t/6//sP+z/7f/uv+8/8D/xP/G/8X/w//A/7//u/+5/7f/t/+0/7P/sv+x/7H/s/+1/7f/uf+7/7z/vf+9/73/vf+8/7r/uf+2/7P/r/+t/6v/qP+m/6T/pP+n/6k=" preload="auto"></audio>
+      <audio ref={explosionSoundRef} src="data:audio/wav;base64,UklGRiIAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQwAAAD8/vr+7f71/Pr88vz2/On85vzc/OD82vzV/NL8yvzC+7j5qPg79of0MvH/64frEuj/5O3mMeX/4pnhKeB/2xLaK9cr1S/NKcxsyPjE+sL6t/qg+IL4JfiU+Jr4nfiV+IL4bPhc+Gf4fPiI+Jb4mPim+KX4pPif+J74nvif+Jz4lviJ+IT4hPiD+ID4f/h++Hb4c/hy+G74a/hp+Gn4avht+G/4dPh5+Hz4fviB+If4jfiZ+K74s/i++MH4zvnV+f76gPudaJHUx+u86Mzh9+FW3uTYGtiZyPrC9Kz3mvys/bMAJQEzAS4BHwEaAQ0BCQELAQwBCwELAQwBDQEPAFcBWgGTAX4BjwGRAYoBfwF4AVsBSgE8ASQBDQDx/sX+vf6//qr+mv6U/pf+mv6n/rP+w/7X/uv++/8UAxIDJgMwAzIDNAMqAyYDJQMiAx4DGwMaAxkDGAN4/tr+z/7K/sn+w/6v/qT+n/6d/p3+oP6l/qz+tP7A/sr+2f7s/voA/wHDAdoB5AHoAesB6AHkAd8B1wHPAckBwwG5AbQBpAGZAT4A5v/V/9T/yf/F/8T/wv/C/8L/x//S/9n/4v/n/+z/9f/6AAMBBAEHAAwADwAOAA4ADQAJAAUAAQAEAAwADQAPABIAFgAWABQAEgAQAA0ACwALAA0ADwARABMAFQAXABkAGwAbABsAGgAYABQAEQAPAA4ADQAOAA8AEQATABYAGQAcAB4AIAAhAB8AHQAZABYAFAASABAADgANAA4AEAAQABAAEAAPAA0ACwAKAAoACgAKAAoACQAI" preload="auto"></audio>
+      <audio ref={gameOverSoundRef} src="data:audio/wav;base64,UklGRjoAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRoAAADD/sL+v/7G/sv+2/7l/v3//QEJAScBMQFEAV4BkgGdAagBsgHMAdEB2wHbAdQBzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOgc+B0IHUgdmB3IHiAeQB6QHqAesB6gHnAeIB2wHRAckBqgGeAR8A7/6r/pj+mf6c/p/+qP7D/uH/BQAfAC8ASQBeAGgAZQBcAEcANgAhABD/8/2M/pD+VPw4+zH6Q/pb+xL8Nf0z/fsBBAIiAyUDRgPl/ff91/2h/bb9z/4b/oX9uP0N/M78zPzO/M78xPzB+777sPuq+qD6k/i39171ovNb8sTzNfQz9Vb3hPoP/JL84f0N/gMCBQMAAP/+/er7zfuK+5f7mvuo+qb6l/mX+Iz4QPdE9U30P/O68ZXxbvFk8U3xQ/F38W3xevGA8ZrycvN39PX1i/eO+Rr8LQDm/tb+pP6J/nUAJgCJAaYB8wIOA0sB1wHoAfwB/AH5AekB0AGzAZQBQwDP/sL+u/6k/pz+o/6l/q/+uP7B/sn+0f7b/uL+8f76/v3//gACAAQABgAHAAYABQADAAEAAQABAAIAAQAAAAEAAAAA" preload="auto"></audio>
+      
+      <div className="absolute top-2 left-2 z-10">
+        <Button onClick={() => setIsMuted(prev => !prev)} variant="ghost" size="icon">
+          {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+        </Button>
+      </div>
+      
       <canvas ref={canvasRef} className="touch-none w-full h-full" />
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
