@@ -51,21 +51,21 @@ const GameCanvas: React.FC = () => {
   const shootTimeout = useRef<NodeJS.Timeout | null>(null);
   const [isMuted, setIsMuted] = useState(false);
 
-  const shootSoundRef = useRef<HTMLAudioElement>(null);
-  const explosionSoundRef = useRef<HTMLAudioElement>(null);
-  const gameOverSoundRef = useRef<HTMLAudioElement>(null);
+  const shootSoundRef = useRef<HTMLAudioElement | null>(null);
+  const explosionSoundRef = useRef<HTMLAudioElement | null>(null);
+  const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
 
-  const playSound = (soundRef: React.RefObject<HTMLAudioElement>) => {
+  const playSound = useCallback((soundRef: React.RefObject<HTMLAudioElement>) => {
     if (!isMuted && soundRef.current) {
       soundRef.current.currentTime = 0;
       soundRef.current.play().catch(e => console.error("Error playing sound:", e));
     }
-  };
+  }, [isMuted]);
 
-  const createExplosion = (x: number, y: number) => {
+  const createExplosion = useCallback((x: number, y: number) => {
     explosions.current.push({ x, y, radius: 30, alpha: 1 });
     playSound(explosionSoundRef);
-  };
+  }, [playSound]);
   
   const resetGame = useCallback(() => {
     if (canvasRef.current) {
@@ -91,7 +91,6 @@ const GameCanvas: React.FC = () => {
     const context = canvas.getContext('2d');
     if (!context) return;
     
-    // Initialize stars
     if (stars.current.length === 0) {
       for (let i = 0; i < 100; i++) {
         stars.current.push({
@@ -118,7 +117,6 @@ const GameCanvas: React.FC = () => {
       ctx.fill();
       ctx.stroke();
       
-      // Cockpit
       ctx.beginPath();
       ctx.arc(playerPosition.current.x, playerPosition.current.y + 5, 5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -220,7 +218,6 @@ const GameCanvas: React.FC = () => {
         return;
       }
       
-      // Player movement
       if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
           playerPosition.current.x -= 7;
       }
@@ -228,48 +225,42 @@ const GameCanvas: React.FC = () => {
           playerPosition.current.x += 7;
       }
 
-      // Update bullets
       bullets.current = bullets.current.map(b => ({ ...b, y: b.y - 10 })).filter(b => b.y > 0);
       
-      // Update enemies
       enemies.current.forEach(enemy => {
           enemy.y += 2.5;
       });
       enemies.current = enemies.current.filter(e => e.y < canvas.height);
 
 
-      // Collision detection: bullets and enemies
       const newBullets = [];
-      let newEnemies = [...enemies.current];
-
-      for(const bullet of bullets.current) {
-        let bulletHit = false;
-        for (let i = newEnemies.length - 1; i >= 0; i--) {
-            const enemy = newEnemies[i];
-            const dx = bullet.x - enemy.x;
-            const dy = bullet.y - enemy.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 15 + 10) { // enemy radius + bullet radius
-                bulletHit = true;
-                createExplosion(enemy.x, enemy.y);
-                newEnemies.splice(i, 1);
-                setScore(prevScore => prevScore + 10);
-                break; 
-            }
-        }
-        if (!bulletHit) {
-            newBullets.push(bullet);
-        }
-      }
+      const newEnemies = [...enemies.current];
       
+      for (const bullet of bullets.current) {
+          let bulletHit = false;
+          for (let i = newEnemies.length - 1; i >= 0; i--) {
+              const enemy = newEnemies[i];
+              const dx = bullet.x - enemy.x;
+              const dy = bullet.y - enemy.y;
+              if (Math.sqrt(dx * dx + dy * dy) < 15 + 10) { 
+                  bulletHit = true;
+                  createExplosion(enemy.x, enemy.y);
+                  newEnemies.splice(i, 1);
+                  setScore(prev => prev + 10);
+                  break; 
+              }
+          }
+          if (!bulletHit) {
+              newBullets.push(bullet);
+          }
+      }
       bullets.current = newBullets;
       enemies.current = newEnemies;
 
-
-      // Collision detection: player and enemies
       for (const enemy of enemies.current) {
         const dx = playerPosition.current.x - enemy.x;
         const dy = playerPosition.current.y - enemy.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { // player radius + enemy radius
+        if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
             createExplosion(playerPosition.current.x, playerPosition.current.y);
             playSound(gameOverSoundRef);
             setGameOver(true);
@@ -323,7 +314,7 @@ const GameCanvas: React.FC = () => {
         e.preventDefault();
         if (gameOver) return;
         const now = new Date().getTime();
-        if (now - lastTouchTime < 300) { // Debounce touch shooting
+        if (now - lastTouchTime < 300) {
             return;
         }
         lastTouchTime = now;
@@ -340,7 +331,7 @@ const GameCanvas: React.FC = () => {
             shoot();
             shootTimeout.current = setTimeout(() => {
                 shootTimeout.current = null;
-            }, 150); // Fire rate limit
+            }, 150);
         }
     };
 
@@ -374,7 +365,7 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, [gameOver, score, resetGame]);
+  }, [gameOver, score, resetGame, playSound, createExplosion]);
 
   return (
     <>
@@ -403,3 +394,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default AstroClash;
+
+    
