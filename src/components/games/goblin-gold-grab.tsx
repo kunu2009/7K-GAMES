@@ -114,7 +114,7 @@ const GameCanvas: React.FC = () => {
     if (!canvas) return;
     
     const minGap = 80;
-    const maxGap = 150;
+    const maxGap = 120;
     const minWidth = 150;
     const maxWidth = 350;
 
@@ -259,6 +259,8 @@ const GameCanvas: React.FC = () => {
         // ---- Boundary checks ----
         if(player.x < 0) player.x = 0;
         if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        
+        // ---- Game Over Condition ----
         if(player.y > canvas.height + 200) { // Fall off screen
             setGameOver(true);
         }
@@ -352,13 +354,9 @@ const GameCanvas: React.FC = () => {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameOver, score, startGame, generateNewPlatform]);
+  }, [score, gameOver, startGame, generateNewPlatform]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default GoblinGoldGrab;
-
-    
-
-    
