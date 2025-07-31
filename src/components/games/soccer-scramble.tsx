@@ -65,27 +65,30 @@ const GameCanvas: React.FC = () => {
     setScores({ player1: 0, player2: 0 });
     setLastGoal(null);
     setGameState('playing');
+    setCountdown(3);
     resetPositions();
   }, [resetPositions]);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
-    const newScores = { ...scores };
-    if (scoringPlayer === 'player1') {
-      newScores.player1++;
-    } else {
-      newScores.player2++;
-    }
-    setScores(newScores);
+    setScores(prevScores => {
+        const newScores = { ...prevScores };
+        if (scoringPlayer === 'player1') {
+          newScores.player1++;
+        } else {
+          newScores.player2++;
+        }
 
-    if (newScores.player1 >= 3 || newScores.player2 >= 3) {
-      setGameState('over');
-    } else {
-      setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
-      setCountdown(3);
-      resetPositions();
-      setTimeout(() => setLastGoal(null), 2000);
-    }
-  }, [scores, resetPositions]);
+        if (newScores.player1 >= 3 || newScores.player2 >= 3) {
+            setGameState('over');
+        } else {
+            setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
+            setCountdown(3);
+            resetPositions();
+            setTimeout(() => setLastGoal(null), 2000);
+        }
+        return newScores;
+    });
+  }, [resetPositions]);
 
 
   useEffect(() => {
@@ -311,10 +314,16 @@ const GameCanvas: React.FC = () => {
         gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
-    let countdownInterval: NodeJS.Timeout;
+    let countdownInterval: NodeJS.Timeout | undefined;
     if (gameState === 'playing' && countdown > 0) {
       countdownInterval = setInterval(() => {
-        setCountdown(prev => prev - 1);
+        setCountdown(prev => {
+            if (prev <= 1) {
+                clearInterval(countdownInterval);
+                return 0;
+            }
+            return prev - 1;
+        });
       }, 1000);
     }
     
