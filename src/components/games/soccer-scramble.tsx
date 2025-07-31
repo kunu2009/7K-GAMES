@@ -46,7 +46,7 @@ const GameCanvas: React.FC = () => {
   const ballRef = useRef<Body>({ x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98 });
   
   const gameLoopId = useRef<number>();
-  let countdownIntervalRef = useRef<NodeJS.Timeout>();
+  const countdownIntervalRef = useRef<NodeJS.Timeout>();
 
 
   const GRAVITY = 0.6;
@@ -69,20 +69,6 @@ const GameCanvas: React.FC = () => {
     setGameState('playing');
     setCountdown(3);
     resetPositions();
-
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-    }
-    countdownIntervalRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
   }, [resetPositions]);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
@@ -100,26 +86,27 @@ const GameCanvas: React.FC = () => {
             setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
             setCountdown(3);
             resetPositions();
-            
-            if (countdownIntervalRef.current) {
-              clearInterval(countdownIntervalRef.current);
-            }
-            countdownIntervalRef.current = setInterval(() => {
-              setCountdown(prev => {
-                if (prev <= 1) {
-                  if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                  return 0;
-                }
-                return prev - 1;
-              });
-            }, 1000);
-
             setTimeout(() => setLastGoal(null), 2000);
         }
         return newScores;
     });
   }, [resetPositions]);
 
+  useEffect(() => {
+    if (gameState === 'playing' && countdown > 0) {
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (countdown <= 0) {
+      if(countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    }
+  
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [gameState, countdown]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -140,7 +127,8 @@ const GameCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    const handleStartAction = () => {
+    const handleStartAction = (e: Event) => {
+        e.preventDefault();
         if (gameState !== 'playing') {
             startGame();
         }
@@ -149,7 +137,7 @@ const GameCanvas: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current[e.key.toLowerCase()] = true;
       if (gameState !== 'playing' && (e.key === ' ' || e.key === 'Enter')) {
-        handleStartAction();
+        handleStartAction(e);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -318,7 +306,7 @@ const GameCanvas: React.FC = () => {
         ctx.fillText(`${scores.player1} - ${scores.player2}`, canvas.width / 2, 80);
 
         if (lastGoal) {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.font = 'bold 80px "Space Grotesk", sans-serif';
             ctx.fillText(lastGoal, canvas.width / 2, canvas.height / 2);
         }
@@ -333,7 +321,7 @@ const GameCanvas: React.FC = () => {
             ctx.font = 'bold 60px "Space Grotesk", sans-serif';
             ctx.shadowColor = 'black';
             ctx.shadowBlur = 10;
-            const winner = scores.player1 > scores.player2 ? "Player 1 Wins!" : "Player 2 Wins!";
+            const winner = scores.player1 > scores.player2 ? "Blue Player Wins!" : "Red Player Wins!";
             ctx.fillText(gameState === 'over' ? winner : "Soccer Scramble", canvas.width / 2, canvas.height / 2 - 80);
             
             ctx.font = '30px "Space Grotesk", sans-serif';
@@ -343,7 +331,8 @@ const GameCanvas: React.FC = () => {
             ctx.fillStyle = 'white';
             ctx.font = 'bold 120px "Space Grotesk", sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(`${countdown}`, canvas.width / 2, canvas.height / 2);
+            const text = countdown > 0 ? `${countdown}` : "GO!";
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
         }
     }
 
@@ -376,3 +365,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default SoccerScramble;
+
+    
