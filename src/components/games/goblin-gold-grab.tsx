@@ -25,7 +25,13 @@ type Coin = {
   x: number;
   y: number;
   size: number;
-  isCollected: boolean;
+};
+
+type Cloud = {
+  x: number;
+  y: number;
+  size: number;
+  speed: number;
 };
 
 const GoblinGoldGrab: React.FC = () => {
@@ -56,6 +62,7 @@ const GameCanvas: React.FC = () => {
   const playerRef = useRef<Player>({ x: 150, y: 300, width: 40, height: 40, vx: 0, vy: 0, onGround: false, isJumping: false });
   const platformsRef = useRef<Platform[]>([]);
   const coinsRef = useRef<Coin[]>([]);
+  const cloudsRef = useRef<Cloud[]>([]);
   const worldX = useRef(0);
   const gameSpeed = useRef(2.5);
   const lastPlatformX = useRef(0);
@@ -71,8 +78,8 @@ const GameCanvas: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const minGap = 40;
-    const maxGap = 80;
+    const minGap = 50;
+    const maxGap = 120;
     const minWidth = 100;
     const maxWidth = 250;
 
@@ -80,13 +87,13 @@ const GameCanvas: React.FC = () => {
     const newX = lastPlatformX.current + gap;
     const newWidth = minWidth + Math.random() * (maxWidth - minWidth);
     
-    const yVariation = 80; // Reduced from 100
+    const yVariation = 60;
     const lastPlatform = platformsRef.current[platformsRef.current.length - 1];
     let newY = lastPlatform.y + (Math.random() - 0.5) * yVariation * 2;
     
     newY = Math.max(200, Math.min(canvas.height - 150, newY));
 
-    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 100 };
+    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 40 };
     platformsRef.current.push(newPlatform);
     lastPlatformX.current = newX + newWidth;
 
@@ -96,7 +103,6 @@ const GameCanvas: React.FC = () => {
             x: newPlatform.x + (i + 1) * (newPlatform.width / (numCoins + 2)),
             y: newPlatform.y - 40,
             size: 15,
-            isCollected: false,
         };
         coinsRef.current.push(coin);
     }
@@ -124,7 +130,7 @@ const GameCanvas: React.FC = () => {
     platformsRef.current = [];
     coinsRef.current = [];
     
-    const startPlatform: Platform = { x: 50, y: canvas.height - 100, width: 300, height: 100 };
+    const startPlatform: Platform = { x: 50, y: canvas.height - 100, width: 300, height: 40 };
     platformsRef.current.push(startPlatform);
     lastPlatformX.current = startPlatform.x + startPlatform.width;
 
@@ -132,27 +138,38 @@ const GameCanvas: React.FC = () => {
         generateNewPlatform();
     }
     
+    if (cloudsRef.current.length === 0) {
+      for (let i = 0; i < 15; i++) {
+        cloudsRef.current.push({
+          x: Math.random() * canvas.width * 2,
+          y: Math.random() * (canvas.height / 2),
+          size: Math.random() * 50 + 20,
+          speed: Math.random() * 0.3 + 0.1,
+        });
+      }
+    }
+
     setGameState('playing');
   }, [generateNewPlatform]);
   
   useEffect(() => {
     const sprite = new Image();
-    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPGNpcmNsZSBmaWxsPSIjNENBNjUxIiBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz4KICAgIDxwYXRoIGQ9Ik0xMiAyM2E0IDQgMCAwIDEtNCA0IDQgNCAwIDAgMS00LTQgNCA0IDAgMCAxIDQtNCA0IDQgMCAwIDEgNCA0em0yMCwwYTQgNCAwIDAgMS00IDQgNCA0IDAgMCAxLTQtNCA0IDQgMCAwIDEgNC00IDQgNCAwIDAgMSg0IDR6IiBmaWxsPSIjRkZGIi8+CiAgICA8cGF0aCBkPSJtMTYgMjYgOCAwIiBzdHJva2U9IiNGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNMTIgMTRoM2ExIDEgMCAwIDEgMSAxdjJoLTZ2LTJhMSAxIDAgMCAxIDEtMWgxeiIgZmlsbD0iI0ZGQzczMyIvPgogICAgPHBhdGggZD0iTTI1IDMxaDNhMSAxIDAgMCAxIDEgMXYyaC02di0yYTEgMSAwIDAgMSAxLTFoMXoiIGZpbGw9IiNGRkM3MzMiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgMCAxIDM3IDApIi8+CiAgICA8cGF0aCBkPSJNMTYgMjdjMC0yLjIxIDEuNzkyLTQgNC00czQgMS43OSA0IDQiIHN0cm9rZT0iI0ZGRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGZpbGw9IiMwMDAiIGQ9Ik0xOCAyMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6bTYgMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6Ii8+CiAgPC9nPgo8L3N2Zz4=";
+    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNSAzQzE5LjQ3NyAzIDE1IDcuNDc3IDE1IDEzdi0xYTQgNCAwIDAgMC04IDAgNCA0IDAgMCAwIDggMHYxYzAgNS41MjMgNC40NzcgMTAgMTAgMTBzMTAgNC40NzcgMTAgMTBWMTNhNCA0IDAgMCAwIDgtMGE0IDQgMCAwIDAgLTggMFYxM2MwLTUuNTIzLTQuNDc3LTEwLTEwLTEweiIgZmlsbD0iIzRDQTY1MSIvPjxwYXRoIGQ9Ik0yNSAzN2E1IDUgMCAwIDEgNS44MyA0SDI1YTggOCAwIDAgMC04LTggOC4wMyA4LjAzIDAgMCAwIDUtNy41OTJjLjc4My4zNjIgMS42MzUuNTkyIDIuNS41OTJoLjVjMS45MzMgMCAzLjUtMS41NjcgMy41LTMuNXMtMS41NjctMy41LTMuNS0zLjVoLS41YTYuOTcgNi45NyAwIDAgMS0yLjUtLjU5MkM3LjAzIDE4LjgzNCAxIDI1LjY1IDEgMzVjMCA1LjUyMyA0LjQ3NyAxMCAxMCAxMGg0LjE3MmE1IDUgMCAwIDEgNC4xNjctNGgtMS4zMzl6bTEzIDBjMCAuMDM3LS4wMTUuMDctLjAyMy4xMDRhNC45ODIgNC45ODIgMCAwIDEtLjEzOS42MzRDNDAuMjc1IDQxLjM2MiA0MyA0NC4wMzQgNDMgNDhjMCAyLjIwOC0yLjAxIDEuNS00IDEuNWgtM2MtMS4xMDQgMC0yLS44OTYtMi0ycy44OTYtMiAyLTJoM2MyLjQ4OCAwIDMtMS4zMzgtMi0zYTQgNCAwIDAgMC0zLjAwNi0xLjQzMmMtLjM0OC0xLjM2OC0uOTEyLTIuNjA1LTIuMDY0LTMuNTY4LS43Mi0uNi0xLjU1LS45NDctMi40My0xQzQwLjEzMyAyMy4zOSA0NSAxOS42MDcgNDUgMTRjMC01LjEyMy0zLjg2My05LjI5OS04LjYyNS05LjkzMUE5Ljk1IDkuOTUgMCAwIDEgNDUgNy41YzAgNC4xNDItMy4zNTggNy41LTcuNSA3LjVzLTcuNS0zLjM1OC03LjUtNy41IDMuMzU4LTcuNSA3LjUtNy41YTkuOTUyIDkuOTUyIDAgMCAxIDguNjI1IDQuMDY5QzM2LjEzNyA0LjcwMSAzMiAxIDMyIDEgMjYuNDc3IDEgMjIgNS40NzcgMjIgMTFzNC40NzcgMTAgMTAgMTBjLjcxMiAwIDEuMzk3LS4wNzQgMi4wNjQtLjIwMi44OC4wNTMgMS43MS4zNDMgMi40My45NDcgMS4xNTIgLjk2MyAxLjcxNiAyLjE5OSAyLjA2NCAzLjU2OEE0Ljk2IDQ5LjYgMCAwIDEgNDAgMjljMiAwIDQtLjUgNC0yLjUgMC0yLjQxNC0xLjM3Mi00LjQyMy0zLjg0Mi01LjQ4MnoiIGZpbGw9IiMzOTgwNEEiLz48cGF0aCBkPSJNMjIgMzhhNSA1IDAgMCAxIDUtNWgxMGE1IDUgMCAwIDEgNSA1IDUgNSAwIDAgMS01IDVoLTEwYTUgNSAwIDAgMS01LTV6IiBmaWxsPSIjOEI1RTJELz48cGF0aCBkPSJNMzUgMzVhMiAyIDAgMSAwIDAgNCAyIDIgMCAwIDAgMC00em0tMjAgMGEyIDIgMCAxIDAgMCA0IDIgMiAwIDAgMCAwLTR6IiBmaWxsPSIjRkZGRkZGLi8+PHBhdGggZD0iTTMwIDI2YTQgNCAwIDEgMC04IDAgNCA0IDAgMCAwIDggMHoiIGZpbGw9IiMwMDAwMDAiLz48cGF0aCBkPSJNMzIgNDBoLTdjLTEuMTA0IDAtMi0uODk2LTItMnMuODk2LTIgMi0yaDdWMzJsMy0yaDJ2OGMwIDEuMTA0LS44OTYgMi0yIDJ6IiBmaWxsPSIjOEM1RTJELi8+PC9nPjwvc3ZnPg==";
     sprite.onload = () => {
         goblinSpriteRef.current = sprite;
     };
   }, []);
 
   const handlePlayerAction = useCallback(() => {
-    if (gameState === 'waiting' || gameState === 'over') {
-      startGame();
-    } else if (gameState === 'playing') {
+    if (gameState === 'playing') {
       const player = playerRef.current;
       if (player.onGround && !player.isJumping) {
         player.vy = JUMP_POWER;
         player.onGround = false;
         player.isJumping = true;
       }
+    } else {
+      startGame();
     }
   }, [gameState, startGame]);
 
@@ -241,14 +258,12 @@ const GameCanvas: React.FC = () => {
         });
         
         const newCoins = coinsRef.current.filter(coin => {
-            if (!coin.isCollected) {
-                const coinX = coin.x - worldX.current;
-                const dx = coinX - (player.x + player.width / 2);
-                const dy = coin.y - (player.y + player.height / 2);
-                if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
-                    setScore(prev => prev + 10);
-                    return false; // remove coin
-                }
+            const coinX = coin.x - worldX.current;
+            const dx = coinX - (player.x + player.width / 2);
+            const dy = coin.y - (player.y + player.height / 2);
+            if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
+                setScore(prev => prev + 10);
+                return false; 
             }
             return true;
         });
@@ -277,39 +292,73 @@ const GameCanvas: React.FC = () => {
       
         ctx.fillStyle = '#639BFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-        ctx.fillStyle = '#4A2E20';
-        ctx.strokeStyle = '#2d1b13';
-        ctx.lineWidth = 4;
+
+        // Draw background mountains
+        ctx.fillStyle = '#a0a0b0';
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height);
+        for(let i = 0; i < canvas.width * 2; i+= 50) {
+          const x = i - (worldX.current * 0.1) % (canvas.width * 2);
+          const y = canvas.height - 150 - Math.sin(i * 0.01) * 50;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(canvas.width, canvas.height);
+        ctx.fill();
+
+        // Draw clouds
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        cloudsRef.current.forEach(cloud => {
+          cloud.x -= cloud.speed;
+          if (cloud.x + cloud.size * 2 < 0) {
+            cloud.x = canvas.width + cloud.size;
+          }
+          ctx.beginPath();
+          ctx.ellipse(cloud.x, cloud.y, cloud.size, cloud.size * 0.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        
+        // Draw platforms
         platformsRef.current.forEach(p => {
-            ctx.fillRect(p.x - worldX.current, p.y, p.width, p.height);
-            ctx.strokeRect(p.x - worldX.current, p.y, p.width, p.height);
+            const platX = p.x - worldX.current;
+            const grad = ctx.createLinearGradient(platX, p.y, platX, p.y + p.height);
+            grad.addColorStop(0, '#6A8A3B');
+            grad.addColorStop(1, '#4A2E20');
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(platX, p.y, p.width, p.height);
+
+            ctx.fillStyle = '#5A7A2B';
+            ctx.fillRect(platX, p.y, p.width, 10);
         });
       
+        // Draw coins
         ctx.fillStyle = '#FFD700';
         ctx.strokeStyle = '#DAA520';
         ctx.lineWidth = 3;
         coinsRef.current.forEach(c => {
-            if (!c.isCollected) {
-                ctx.beginPath();
-                ctx.arc(c.x - worldX.current, c.y, c.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-                ctx.font = 'bold 12px "Space Grotesk"';
-                ctx.fillStyle = '#DAA520';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('$', c.x - worldX.current, c.y+1);
-            }
+            const coinX = c.x - worldX.current;
+            ctx.beginPath();
+            ctx.arc(coinX, c.y, c.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.font = 'bold 12px "Space Grotesk"';
+            ctx.fillStyle = '#DAA520';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', coinX, c.y + 1);
         });
       
-        if (goblinSpriteRef.current) {
-            ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
-        } else {
-            ctx.fillStyle = 'green';
-            ctx.fillRect(player.x, player.y, player.width, player.height);
+        // Draw player
+        if (gameState === 'playing' || gameState === 'over') {
+          if (goblinSpriteRef.current) {
+              ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
+          } else {
+              ctx.fillStyle = 'green';
+              ctx.fillRect(player.x, player.y, player.width, player.height);
+          }
         }
       
+        // Draw score
         ctx.fillStyle = 'white';
         ctx.font = 'bold 30px "Space Grotesk", sans-serif';
         ctx.textAlign = 'left';
@@ -318,6 +367,7 @@ const GameCanvas: React.FC = () => {
         ctx.strokeText(`Score: ${score}`, 20, 50);
         ctx.fillText(`Score: ${score}`, 20, 50);
 
+        // Draw UI text
         if (gameState !== 'playing') {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -352,8 +402,10 @@ const GameCanvas: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      canvas.removeEventListener('touchstart', handleTouchStart as unknown as EventListener);
-      canvas.removeEventListener('touchend', handleTouchEnd as unknown as EventListener);
+      if(canvas) {
+        canvas.removeEventListener('touchstart', handleTouchStart as unknown as EventListener);
+        canvas.removeEventListener('touchend', handleTouchEnd as unknown as EventListener);
+      }
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
@@ -364,5 +416,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default GoblinGoldGrab;
-
-    
