@@ -1,3 +1,4 @@
+
 import { Badge } from "@/components/ui/badge";
 import GameCard from "@/components/game-card";
 
@@ -14,15 +15,15 @@ const games = [
     slug: "goblin-gold-grab", 
     title: "Goblin Gold Grab", 
     description: "A 2.5D platformer where you race to collect gold.", 
-    players: "2-4", 
+    players: "1", 
     image: "https://placehold.co/600x400.png",
     hint: "fantasy race"
   },
   { 
-    slug: "crystal-maze", 
-    title: "Crystal Maze", 
-    description: "A 3D puzzle game requiring teamwork.", 
-    players: "1-2", 
+    slug: "build-n-bounce", 
+    title: "Build 'n' Bounce", 
+    description: "Build your path upwards on a constantly bouncing platform.", 
+    players: "1", 
     image: "https://placehold.co/600x400.png",
     hint: "abstract puzzle"
   },
