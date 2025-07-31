@@ -4,17 +4,34 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 
-type Coin = {
-  x: number;
-  y: number;
-  size: number;
-};
-
-type Obstacle = {
+type Player = {
   x: number;
   y: number;
   width: number;
   height: number;
+  vx: number;
+  vy: number;
+  onGround: boolean;
+  isJumping: boolean;
+};
+
+type Platform = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type Coin = {
+  x: number;
+  y: number;
+  size: number;
+  isCollected: boolean;
+};
+
+type ParallaxLayer = {
+    image: HTMLImageElement | null;
+    speed: number;
 };
 
 const GoblinGoldGrab: React.FC = () => {
@@ -25,11 +42,11 @@ const GoblinGoldGrab: React.FC = () => {
   }, []);
 
   if (!isClient) {
-    return null; // Or a loading spinner
+    return null;
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center bg-[#87CEEB] text-white touch-none relative">
+    <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-sky-400 to-sky-600 text-white touch-none relative overflow-hidden">
       <GameCanvas />
     </div>
   );
@@ -37,272 +54,309 @@ const GoblinGoldGrab: React.FC = () => {
 
 const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const playerRef = useRef({ x: 100, y: 0, width: 50, height: 50, vy: 0, onGround: false });
-  const coins = useRef<Coin[]>([]);
-  const obstacles = useRef<Obstacle[]>([]);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
-  const gameLoopId = useRef<number>();
+  
   const [gameOver, setGameOver] = useState(true);
   const [score, setScore] = useState(0);
-  const gameSpeed = useRef(5);
+
+  const playerRef = useRef<Player>({ x: 150, y: 300, width: 40, height: 40, vx: 0, vy: 0, onGround: false, isJumping: false });
+  const platformsRef = useRef<Platform[]>([]);
+  const coinsRef = useRef<Coin[]>([]);
   const worldX = useRef(0);
-  const lastObjectX = useRef(0);
+  const gameSpeed = useRef(2.5);
+  const lastPlatformX = useRef(0);
+  
+  const gameLoopId = useRef<number>();
+  const goblinSpriteRef = useRef<HTMLImageElement | null>(null);
 
-  const generateCoin = useCallback(() => {
-    const canvas = canvasRef.current;
-    if(canvas) {
-        lastObjectX.current += 200 + Math.random() * 300;
-        coins.current.push({
-            x: lastObjectX.current,
-            y: canvas.height - 100 - Math.random() * 250,
-            size: 15
-        });
-    }
-  }, []);
-
-  const generateObstacle = useCallback(() => {
-    const canvas = canvasRef.current;
-    if(canvas) {
-        lastObjectX.current += 400 + Math.random() * 400;
-        const height = Math.random() * 60 + 20;
-        obstacles.current.push({
-            x: lastObjectX.current,
-            y: canvas.height - 50 - height,
-            width: 30,
-            height: height
-        });
-    }
-  }, []);
-
+  // Constants
+  const GRAVITY = 0.6;
+  const JUMP_POWER = -14;
+  const PLAYER_SPEED = 5;
 
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      playerRef.current = { x: 100, y: canvas.height - 100, width: 50, height: 50, vy: 0, onGround: false };
-      lastObjectX.current = canvas.width;
-    }
-    coins.current = [];
-    obstacles.current = [];
-    keysPressed.current = {};
-    worldX.current = 0;
-    gameSpeed.current = 5;
+    if (!canvas) return;
+
     setScore(0);
+    worldX.current = 0;
+    gameSpeed.current = 2.5;
+    
+    playerRef.current = {
+        x: 150,
+        y: 100,
+        width: 40,
+        height: 40,
+        vx: 0,
+        vy: 0,
+        onGround: false,
+        isJumping: false
+    };
+
+    platformsRef.current = [];
+    coinsRef.current = [];
+    
+    // Create starting platform
+    const startPlatform: Platform = { x: 50, y: canvas.height - 100, width: 300, height: 100 };
+    platformsRef.current.push(startPlatform);
+    lastPlatformX.current = startPlatform.x + startPlatform.width;
+
+    // Pre-generate some platforms and coins
+    for (let i = 0; i < 10; i++) {
+        generateNewPlatform();
+    }
+    
     setGameOver(false);
+  }, []);
 
-    // Initial object generation
-    for (let i = 0; i < 5; i++) {
-        generateCoin();
-    }
-    for (let i = 0; i < 3; i++) {
-        generateObstacle();
-    }
-  }, [generateCoin, generateObstacle]);
+  const generateNewPlatform = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const minGap = 100;
+    const maxGap = 200;
+    const minWidth = 150;
+    const maxWidth = 350;
 
+    const gap = minGap + Math.random() * (maxGap - minGap);
+    const newX = lastPlatformX.current + gap;
+    const newWidth = minWidth + Math.random() * (maxWidth - minWidth);
+    
+    const yVariation = 150;
+    const lastPlatform = platformsRef.current[platformsRef.current.length - 1];
+    let newY = lastPlatform.y + (Math.random() - 0.5) * yVariation * 2;
+    
+    newY = Math.max(200, Math.min(canvas.height - 100, newY));
+
+    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 100 };
+    platformsRef.current.push(newPlatform);
+    lastPlatformX.current = newX + newWidth;
+
+    // Add coins on the new platform
+    const numCoins = Math.floor(Math.random() * 4) + 2;
+    for(let i = 0; i < numCoins; i++) {
+        const coin: Coin = {
+            x: newPlatform.x + (i + 1) * (newPlatform.width / (numCoins + 1)),
+            y: newPlatform.y - 30,
+            size: 12,
+            isCollected: false,
+        };
+        coinsRef.current.push(coin);
+    }
+  }, []);
+  
+  useEffect(() => {
+    const sprite = new Image();
+    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPGNpcmNsZSBmaWxsPSIjNENBNjUxIiBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz4KICAgIDxwYXRoIGQ9Ik0xMiAyM2E0IDQgMCAwIDEtNCA0IDQgNCAwIDAgMS00LTQgNCA0IDAgMCAxIDQtNCA0IDQgMCAwIDEgNCA0em0yMCwwYTQgNCAwIDAgMS00IDQgNCA0IDAgMCAxLTQtNCA0IDQgMCAwIDEgNC00IDQgNCAwIDAgMSg0IDR6IiBmaWxsPSIjRkZGIi8+CiAgICA8cGF0aCBkPSJtMTYgMjYgOCAwIiBzdHJva2U9IiNGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNMTIgMTRoM2ExIDEgMCAwIDEgMSAxdjJoLTZ2LTJhMSAxIDAgMCAxIDEtMWgxeiIgZmlsbD0iI0ZGQyczMyIvPgogICAgPHBhdGggZD0iTTI1IDMxaDNhMSAxIDAgMCAxIDEgMXYyaC02di0yYTEgMSAwIDAgMSAxLTFoMXoiIGZpbGw9IiNGRkM3MzMiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgMCAxIDM3IDApIi8+CiAgICA8cGF0aCBkPSJNMTYgMjdjMC0yLjIxIDEuNzkyLTQgNC00czQgMS43OSA0IDQiIHN0cm9rZT0iI0ZGRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGZpbGw9IiMwMDAiIGQ9Ik0xOCAyMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6bTYgMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6Ii8+CiAgPC9nPgo8L3N2Zz4=";
+    sprite.onload = () => {
+        goblinSpriteRef.current = sprite;
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const context = canvas.getContext('2d');
-    if (!context) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     
-    let canvasWidth = window.innerWidth;
-    let canvasHeight = window.innerHeight;
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-
-    const gravity = 0.7;
-    const jumpPower = -18;
-    const groundY = canvas.height - 50;
-
-    const drawPlayer = (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = 'green';
-        ctx.fillRect(playerRef.current.x, playerRef.current.y, playerRef.current.width, playerRef.current.height);
-    };
-
-    const drawCoins = (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = 'gold';
-        coins.current.forEach(coin => {
-            ctx.beginPath();
-            ctx.arc(coin.x - worldX.current, coin.y, coin.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
-    };
-
-    const drawObstacles = (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = 'brown';
-        obstacles.current.forEach(obstacle => {
-            ctx.fillRect(obstacle.x - worldX.current, obstacle.y, obstacle.width, obstacle.height);
-        });
-    };
-    
-    const drawGround = (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = '#228B22';
-        ctx.fillRect(0, groundY, canvas.width, 50);
-    };
-
-    const drawScore = (ctx: CanvasRenderingContext2D) => {
-        ctx.fillStyle = 'black';
-        ctx.font = '24px "Space Grotesk", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Gold: ${score}`, 20, 40);
-    };
-
-
-    const gameLoop = () => {
-      if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext('2d');
-      if (!ctx) return;
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-      drawGround(ctx);
-      
-      if (gameOver) {
-        drawCoins(ctx);
-        drawObstacles(ctx);
-        drawPlayer(ctx);
-        drawScore(ctx);
-        gameLoopId.current = requestAnimationFrame(gameLoop);
-        return;
-      }
-      
-      worldX.current += gameSpeed.current;
-      gameSpeed.current += 0.001; // Gradually increase speed
-
-      // --- Player Logic ---
-      playerRef.current.vy += gravity;
-      playerRef.current.y += playerRef.current.vy;
-      
-      if (playerRef.current.y + playerRef.current.height > groundY) {
-        playerRef.current.y = groundY - playerRef.current.height;
-        playerRef.current.vy = 0;
-        playerRef.current.onGround = true;
-      } else {
-        playerRef.current.onGround = false;
-      }
-
-      if ((keysPressed.current[' '] || keysPressed.current['ArrowUp']) && playerRef.current.onGround) {
-        playerRef.current.vy = jumpPower;
-      }
-      
-      // Clamp player position
-      if(playerRef.current.x < 0) playerRef.current.x = 0;
-      if(playerRef.current.x + playerRef.current.width > canvas.width) playerRef.current.x = canvas.width - playerRef.current.width;
-
-      // --- Collision Detection ---
-      // Coins
-      coins.current.forEach((coin, index) => {
-        const dx = (coin.x - worldX.current) - (playerRef.current.x + playerRef.current.width / 2);
-        const dy = coin.y - (playerRef.current.y + playerRef.current.height / 2);
-        if (Math.sqrt(dx*dx + dy*dy) < coin.size + playerRef.current.width / 2) {
-          coins.current.splice(index, 1);
-          setScore(prev => prev + 1);
-        }
-      });
-      
-      // Obstacles
-      obstacles.current.forEach((obstacle) => {
-        if (
-          playerRef.current.x < obstacle.x - worldX.current + obstacle.width &&
-          playerRef.current.x + playerRef.current.width > obstacle.x - worldX.current &&
-          playerRef.current.y < obstacle.y + obstacle.height &&
-          playerRef.current.y + playerRef.current.height > obstacle.y
-        ) {
-          setGameOver(true);
-        }
-      });
-      
-      // Clean up off-screen objects and generate new ones
-      coins.current = coins.current.filter(c => c.x - worldX.current + c.size > 0);
-      while(coins.current.length < 10) {
-        generateCoin();
-      }
-
-      obstacles.current = obstacles.current.filter(o => o.x - worldX.current + o.width > 0);
-      while(obstacles.current.length < 5) {
-        generateObstacle();
-      }
-
-      // --- Drawing ---
-      drawCoins(ctx);
-      drawObstacles(ctx);
-      drawPlayer(ctx);
-      drawScore(ctx);
-
-      gameLoopId.current = requestAnimationFrame(gameLoop);
-    };
-
     const handleResize = () => {
-        const canvas = canvasRef.current;
-        if(canvas) {
-            canvasWidth = window.innerWidth;
-            canvasHeight = window.innerHeight;
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
-        }
-    }
-    
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        keysPressed.current[e.key.toLowerCase()] = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+        keysPressed.current[e.key.toLowerCase()] = false;
+    };
     const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
-        if (gameOver) {
-            if(e.touches.length > 0) {
-              startGame();
-            }
-            return;
-        }
-
-        if (playerRef.current.onGround) {
-            playerRef.current.vy = jumpPower;
-        }
-    };
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (gameOver && e.key !== 'Enter' && e.key !== ' ') return;
-        if ((e.key === 'Enter' || e.key === ' ') && gameOver) {
+        if(gameOver) {
             startGame();
             return;
         }
-        keysPressed.current[e.key] = true;
+        keysPressed.current[' '] = true;
+    };
+     const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        keysPressed.current[' '] = false;
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-        keysPressed.current[e.key] = false;
-    };
-
-    window.addEventListener('resize', handleResize);
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.addEventListener('touchend', handleTouchEnd);
 
+
+    const gameLoop = () => {
+      if (!canvasRef.current || !ctx) return;
+      
+      const player = playerRef.current;
+
+      // Update logic
+      if (!gameOver) {
+        // ---- World Scrolling ----
+        worldX.current += gameSpeed.current;
+        gameSpeed.current = Math.min(5, gameSpeed.current + 0.001);
+
+        // ---- Player movement ----
+        player.vx = 0;
+        if (keysPressed.current['a'] || keysPressed.current['arrowleft']) {
+            player.vx = -PLAYER_SPEED;
+        }
+        if (keysPressed.current['d'] || keysPressed.current['arrowright']) {
+            player.vx = PLAYER_SPEED;
+        }
+        player.x += player.vx;
+        
+        // ---- Player Jumping & Gravity ----
+        if ((keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup']) && player.onGround && !player.isJumping) {
+            player.vy = JUMP_POWER;
+            player.onGround = false;
+            player.isJumping = true;
+        }
+        // Prevent continuous jumping if key is held down
+        if (!(keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup'])) {
+            player.isJumping = false;
+        }
+
+        player.vy += GRAVITY;
+        player.y += player.vy;
+        
+        // ---- Collision Detection ----
+        player.onGround = false;
+        platformsRef.current.forEach(platform => {
+            const platX = platform.x - worldX.current;
+            if (
+                player.x < platX + platform.width &&
+                player.x + player.width > platX &&
+                player.y + player.height > platform.y &&
+                player.y + player.height < platform.y + 20 + player.vy // Check if player is just above platform
+            ) {
+                player.vy = 0;
+                player.y = platform.y - player.height;
+                player.onGround = true;
+            }
+        });
+        
+        // Coin collection
+        coinsRef.current.forEach(coin => {
+            if (!coin.isCollected) {
+                const coinX = coin.x - worldX.current;
+                const dx = coinX - (player.x + player.width / 2);
+                const dy = coin.y - (player.y + player.height / 2);
+                if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
+                    coin.isCollected = true;
+                    setScore(prev => prev + 10);
+                }
+            }
+        });
+
+        // ---- Boundary checks ----
+        if(player.x < 0) player.x = 0;
+        if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        if(player.y > canvas.height + 200) { // Fall off screen
+            setGameOver(true);
+        }
+
+        // ---- Generate new platforms ----
+        if (lastPlatformX.current - worldX.current < canvas.width + 200) {
+            generateNewPlatform();
+        }
+
+        // Clean up old objects
+        platformsRef.current = platformsRef.current.filter(p => p.x + p.width - worldX.current > 0);
+        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > 0);
+      } else {
+        if(keysPressed.current[' '] || keysPressed.current['enter']) {
+            startGame();
+        }
+      }
+
+      // ---- Drawing ----
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw background
+      ctx.fillStyle = '#639BFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw platforms
+      ctx.fillStyle = '#4A2E20';
+      platformsRef.current.forEach(p => {
+        ctx.fillRect(p.x - worldX.current, p.y, p.width, p.height);
+      });
+      
+      // Draw coins
+      ctx.fillStyle = 'gold';
+      ctx.strokeStyle = 'darkgoldenrod';
+      ctx.lineWidth = 2;
+      coinsRef.current.forEach(c => {
+        if (!c.isCollected) {
+            ctx.beginPath();
+            ctx.arc(c.x - worldX.current, c.y, c.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+      });
+      
+      // Draw player
+      if (goblinSpriteRef.current) {
+        ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
+      } else {
+        ctx.fillStyle = 'green';
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
+      
+      // Draw Score
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 30px "Space Grotesk", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Score: ${score}`, 20, 50);
+
+      // Draw Game Over Screen
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 60px "Space Grotesk", sans-serif';
+        ctx.fillText(score > 0 ? "Game Over" : "Goblin Gold Grab", canvas.width / 2, canvas.height / 2 - 80);
+        
+        ctx.font = '30px "Space Grotesk", sans-serif';
+        ctx.fillText(score > 0 ? `Your Score: ${score}` : "Tap or Press Space to Start", canvas.width / 2, canvas.height / 2);
+        
+        if (score > 0) {
+           ctx.font = '24px "Space Grotesk", sans-serif';
+           ctx.fillText("Tap or Press Space to Play Again", canvas.width / 2, canvas.height / 2 + 50);
+        }
+      }
+
+      gameLoopId.current = requestAnimationFrame(gameLoop);
+    };
+    
+    startGame();
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
-        if (gameLoopId.current) {
-            cancelAnimationFrame(gameLoopId.current);
-        }
-        window.removeEventListener('resize', handleResize);
-        if (canvasRef.current) {
-            canvasRef.current.removeEventListener('touchstart', handleTouchStart);
-        }
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      if (gameLoopId.current) {
+        cancelAnimationFrame(gameLoopId.current);
+      }
     };
-  }, [gameOver, score, startGame, generateCoin, generateObstacle]);
+  }, [gameOver, score, startGame, generateNewPlatform]);
 
-  return (
-    <>
-      <canvas ref={canvasRef} className="touch-none w-full h-full" />
-      {gameOver && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
-          <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? "Game Over" : "Goblin Gold Grab"}</h2>
-          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? `Your Score: ${score}` : "Tap or Press Space to Jump"}</p>
-          <Button onClick={startGame} size="lg" variant="secondary" className="text-lg">
-            {score > 0 ? "Play Again" : "Start Game"}
-          </Button>
-        </div>
-      )}
-    </>
-  )
+  return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default GoblinGoldGrab;
+
+    
