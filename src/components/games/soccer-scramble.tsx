@@ -152,7 +152,7 @@ const GameCanvas: React.FC = () => {
 
     const update = () => {
       if (gameState !== 'playing' || countdown > 0) {
-          return;
+        return;
       }
       
       const entities = [player1Ref.current, player2Ref.current, ballRef.current];
@@ -365,3 +365,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default SoccerScramble;
+
+    
