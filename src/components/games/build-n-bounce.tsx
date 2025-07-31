@@ -55,6 +55,7 @@ const GameCanvas: React.FC = () => {
 
   const GRAVITY = 0.4;
   const JUMP_POWER = -10;
+  const PLAYER_HORIZONTAL_SPEED = 2;
 
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -69,7 +70,7 @@ const GameCanvas: React.FC = () => {
       y: canvas.height - 100,
       width: 30,
       height: 30,
-      vx: 0,
+      vx: PLAYER_HORIZONTAL_SPEED,
       vy: 0,
     };
     
@@ -176,7 +177,14 @@ const GameCanvas: React.FC = () => {
 
       // Player physics
       player.vy += GRAVITY;
+      player.x += player.vx;
       player.y += player.vy;
+      
+      // Wall bounce
+      if (player.x < 0 || player.x + player.width > canvas.width) {
+        player.vx *= -1;
+      }
+
 
       // Collision with tiles
       let onPlatform = false;
@@ -191,7 +199,7 @@ const GameCanvas: React.FC = () => {
           player.vy = JUMP_POWER;
           player.y = tile.y - player.height;
           onPlatform = true;
-          setTileLimit(3); // Reset tile limit on bounce
+          setTileLimit(prev => prev + 3); 
         }
       });
       
@@ -207,8 +215,8 @@ const GameCanvas: React.FC = () => {
         setScore(currentScore);
       }
 
-      // Lava rises
-      lavaY.current -= 0.5;
+      // Lava rises faster
+      lavaY.current -= 1;
 
       // Game over condition
       if (player.y - cameraY.current > canvas.height || player.y > lavaY.current - player.height) {
@@ -314,5 +322,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default BuildNBounce;
-
-    
