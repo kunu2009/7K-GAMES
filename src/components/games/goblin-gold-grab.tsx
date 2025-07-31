@@ -48,6 +48,33 @@ const GameCanvas: React.FC = () => {
   const worldX = useRef(0);
   const lastObjectX = useRef(0);
 
+  const generateCoin = useCallback(() => {
+    const canvas = canvasRef.current;
+    if(canvas) {
+        lastObjectX.current += 200 + Math.random() * 300;
+        coins.current.push({
+            x: lastObjectX.current,
+            y: canvas.height - 100 - Math.random() * 250,
+            size: 15
+        });
+    }
+  }, []);
+
+  const generateObstacle = useCallback(() => {
+    const canvas = canvasRef.current;
+    if(canvas) {
+        lastObjectX.current += 400 + Math.random() * 400;
+        const height = Math.random() * 60 + 20;
+        obstacles.current.push({
+            x: lastObjectX.current,
+            y: canvas.height - 50 - height,
+            width: 30,
+            height: height
+        });
+    }
+  }, []);
+
+
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -69,33 +96,7 @@ const GameCanvas: React.FC = () => {
     for (let i = 0; i < 3; i++) {
         generateObstacle();
     }
-  }, []);
-
-  const generateCoin = () => {
-    const canvas = canvasRef.current;
-    if(canvas) {
-        lastObjectX.current += 200 + Math.random() * 300;
-        coins.current.push({
-            x: lastObjectX.current,
-            y: canvas.height - 100 - Math.random() * 250,
-            size: 15
-        });
-    }
-  };
-
-  const generateObstacle = () => {
-    const canvas = canvasRef.current;
-    if(canvas) {
-        lastObjectX.current += 400 + Math.random() * 400;
-        const height = Math.random() * 60 + 20;
-        obstacles.current.push({
-            x: lastObjectX.current,
-            y: canvas.height - 50 - height,
-            width: 30,
-            height: height
-        });
-    }
-  };
+  }, [generateCoin, generateObstacle]);
 
 
   useEffect(() => {
@@ -286,7 +287,7 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [gameOver, score, startGame]);
+  }, [gameOver, score, startGame, generateCoin, generateObstacle]);
 
   return (
     <>
@@ -305,6 +306,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default GoblinGoldGrab;
-
-    
-    
