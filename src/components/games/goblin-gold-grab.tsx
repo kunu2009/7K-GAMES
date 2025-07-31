@@ -46,11 +46,13 @@ const GameCanvas: React.FC = () => {
   const [score, setScore] = useState(0);
   const gameSpeed = useRef(5);
   const worldX = useRef(0);
+  const lastObjectX = useRef(0);
 
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (canvas) {
       playerRef.current = { x: 100, y: canvas.height - 100, width: 50, height: 50, vy: 0, onGround: false };
+      lastObjectX.current = canvas.width;
     }
     coins.current = [];
     obstacles.current = [];
@@ -61,8 +63,10 @@ const GameCanvas: React.FC = () => {
     setGameOver(false);
 
     // Initial object generation
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
         generateCoin();
+    }
+    for (let i = 0; i < 3; i++) {
         generateObstacle();
     }
   }, []);
@@ -70,9 +74,10 @@ const GameCanvas: React.FC = () => {
   const generateCoin = () => {
     const canvas = canvasRef.current;
     if(canvas) {
+        lastObjectX.current += 200 + Math.random() * 300;
         coins.current.push({
-            x: worldX.current + canvas.width + Math.random() * 1000,
-            y: canvas.height - 100 - Math.random() * 200,
+            x: lastObjectX.current,
+            y: canvas.height - 100 - Math.random() * 250,
             size: 15
         });
     }
@@ -81,9 +86,10 @@ const GameCanvas: React.FC = () => {
   const generateObstacle = () => {
     const canvas = canvasRef.current;
     if(canvas) {
-        const height = Math.random() * 50 + 30;
+        lastObjectX.current += 400 + Math.random() * 400;
+        const height = Math.random() * 60 + 20;
         obstacles.current.push({
-            x: worldX.current + canvas.width + Math.random() * 1000,
+            x: lastObjectX.current,
             y: canvas.height - 50 - height,
             width: 30,
             height: height
@@ -104,8 +110,8 @@ const GameCanvas: React.FC = () => {
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
 
-    const gravity = 0.8;
-    const jumpPower = -15;
+    const gravity = 0.7;
+    const jumpPower = -18;
     const groundY = canvas.height - 50;
 
     const drawPlayer = (ctx: CanvasRenderingContext2D) => {
@@ -151,6 +157,10 @@ const GameCanvas: React.FC = () => {
       drawGround(ctx);
       
       if (gameOver) {
+        drawCoins(ctx);
+        drawObstacles(ctx);
+        drawPlayer(ctx);
+        drawScore(ctx);
         gameLoopId.current = requestAnimationFrame(gameLoop);
         return;
       }
@@ -173,13 +183,7 @@ const GameCanvas: React.FC = () => {
       if ((keysPressed.current[' '] || keysPressed.current['ArrowUp']) && playerRef.current.onGround) {
         playerRef.current.vy = jumpPower;
       }
-      if (keysPressed.current['ArrowLeft']) {
-        playerRef.current.x -= 5;
-      }
-      if (keysPressed.current['ArrowRight']) {
-        playerRef.current.x += 5;
-      }
-
+      
       // Clamp player position
       if(playerRef.current.x < 0) playerRef.current.x = 0;
       if(playerRef.current.x + playerRef.current.width > canvas.width) playerRef.current.x = canvas.width - playerRef.current.width;
@@ -192,7 +196,6 @@ const GameCanvas: React.FC = () => {
         if (Math.sqrt(dx*dx + dy*dy) < coin.size + playerRef.current.width / 2) {
           coins.current.splice(index, 1);
           setScore(prev => prev + 1);
-          generateCoin();
         }
       });
       
@@ -208,14 +211,16 @@ const GameCanvas: React.FC = () => {
         }
       });
       
-      // Clean up off-screen objects
+      // Clean up off-screen objects and generate new ones
       coins.current = coins.current.filter(c => c.x - worldX.current + c.size > 0);
+      while(coins.current.length < 10) {
+        generateCoin();
+      }
+
       obstacles.current = obstacles.current.filter(o => o.x - worldX.current + o.width > 0);
-
-      // Generate new objects
-      if (Math.random() < 0.01) generateCoin();
-      if (Math.random() < 0.005) generateObstacle();
-
+      while(obstacles.current.length < 5) {
+        generateObstacle();
+      }
 
       // --- Drawing ---
       drawCoins(ctx);
@@ -238,15 +243,21 @@ const GameCanvas: React.FC = () => {
     
     const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
-        if (gameOver) return;
+        if (gameOver) {
+            if(e.touches.length > 0) {
+              startGame();
+            }
+            return;
+        }
+
         if (playerRef.current.onGround) {
             playerRef.current.vy = jumpPower;
         }
     };
     
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (gameOver && e.key !== 'Enter') return;
-        if (e.key === 'Enter' && gameOver) {
+        if (gameOver && e.key !== 'Enter' && e.key !== ' ') return;
+        if ((e.key === 'Enter' || e.key === ' ') && gameOver) {
             startGame();
             return;
         }
@@ -283,7 +294,7 @@ const GameCanvas: React.FC = () => {
       {gameOver && (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
           <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? "Game Over" : "Goblin Gold Grab"}</h2>
-          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? `Your Score: ${score}` : "Use Arrow Keys to Move, Space to Jump"}</p>
+          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? `Your Score: ${score}` : "Tap or Press Space to Jump"}</p>
           <Button onClick={startGame} size="lg" variant="secondary" className="text-lg">
             {score > 0 ? "Play Again" : "Start Game"}
           </Button>
@@ -294,3 +305,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default GoblinGoldGrab;
+
+    
