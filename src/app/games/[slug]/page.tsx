@@ -3,6 +3,7 @@
 
 import { useParams } from 'next/navigation';
 import AstroClash from '@/components/games/astro-clash';
+import GoblinGoldGrab from '@/components/games/goblin-gold-grab';
 import { useScreen } from '@/hooks/use-screen';
 import { Button } from '@/components/ui/button';
 import { Maximize, Minimize } from 'lucide-react';
@@ -16,7 +17,7 @@ const games = [
   {
     slug: 'goblin-gold-grab',
     title: 'Goblin Gold Grab',
-    component: <div>Goblin Gold Grab coming soon!</div>,
+    component: <GoblinGoldGrab />,
   },
   {
     slug: 'crystal-maze',
