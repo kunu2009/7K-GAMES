@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
 
 type Player = {
   x: number;
@@ -51,7 +50,7 @@ const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   
-  const [gameOver, setGameOver] = useState(true);
+  const [gameState, setGameState] = useState<'waiting' | 'playing' | 'over'>('waiting');
   const [score, setScore] = useState(0);
 
   const playerRef = useRef<Player>({ x: 150, y: 300, width: 40, height: 40, vx: 0, vy: 0, onGround: false, isJumping: false });
@@ -64,7 +63,6 @@ const GameCanvas: React.FC = () => {
   const gameLoopId = useRef<number>();
   const goblinSpriteRef = useRef<HTMLImageElement | null>(null);
 
-  // Constants
   const GRAVITY = 0.6;
   const JUMP_POWER = -12;
   const PLAYER_SPEED = 5;
@@ -92,7 +90,6 @@ const GameCanvas: React.FC = () => {
     platformsRef.current.push(newPlatform);
     lastPlatformX.current = newX + newWidth;
 
-    // Add coins on the new platform
     const numCoins = Math.floor(Math.random() * 3) + 1;
     for(let i = 0; i < numCoins; i++) {
         const coin: Coin = {
@@ -127,22 +124,20 @@ const GameCanvas: React.FC = () => {
     platformsRef.current = [];
     coinsRef.current = [];
     
-    // Create starting platform
     const startPlatform: Platform = { x: 50, y: canvas.height - 100, width: 300, height: 100 };
     platformsRef.current.push(startPlatform);
     lastPlatformX.current = startPlatform.x + startPlatform.width;
 
-    // Pre-generate some platforms and coins
     for (let i = 0; i < 10; i++) {
         generateNewPlatform();
     }
     
-    setGameOver(false);
+    setGameState('playing');
   }, [generateNewPlatform]);
   
   useEffect(() => {
     const sprite = new Image();
-    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPGNpcmNsZSBmaWxsPSIjNENBNjUxIiBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz4KICAgIDxwYXRoIGQ9Ik0xMiAyM2E0IDQgMCAwIDEtNCA0IDQgNCAwIDAgMS00LTQgNCA0IDAgMCAxIDQtNCA0IDQgMCAwIDEgNCA0em0yMCwwYTQgNCAwIDAgMS00IDQgNCA0IDAgMCAxLTQtNCA0IDQgMCAwIDEgNC00IDQgNCAwIDAgMSg0IDR6IiBmaWxsPSIjRkZGIi8+CiAgICA8cGF0aCBkPSJtMTYgMjYgOCAwIiBzdHJva2U9IiNGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNMTIgMTRoM2ExIDEgMCAwIDEgMSAxdjJoLTZ2LTJhMSAxIDAgMCAxIDEtMWgxeiIgZmlsbD0iI0ZGQyczMyIvPgogICAgPHBhdGggZD0iTTI1IDMxaDNhMSAxIDAgMCAxIDEgMXYyaC02di0yYTEgMSAwIDAgMSAxLTFoMXoiIGZpbGw9IiNGRkM3MzMiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgMCAxIDM3IDApIi8+CiAgICA8cGF0aCBkPSJNMTYgMjdjMC0yLjIxIDEuNzkyLTQgNC00czQgMS43OSA0IDQiIHN0cm9rZT0iI0ZGRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGZpbGw9IiMwMDAiIGQ9Ik0xOCAyMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6bTYgMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6Ii8+CiAgPC9nPgo8L3N2Zz4=";
+    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPGNpcmNsZSBmaWxsPSIjNENBNjUxIiBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiLz4KICAgIDxwYXRoIGQ9Ik0xMiAyM2E0IDQgMCAwIDEtNCA0IDQgNCAwIDAgMS00LTQgNCA0IDAgMCAxIDQtNCA0IDQgMCAwIDEgNCA0em0yMCwwYTQgNCAwIDAgMS00IDQgNCA0IDAgMCAxLTQtNCA0IDQgMCAwIDEgNC00IDQgNCAwIDAgMSg0IDR6IiBmaWxsPSIjRkZGIi8+CiAgICA8cGF0aCBkPSJtMTYgMjYgOCAwIiBzdHJva2U9IiNGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cGF0aCBkPSJNMTIgMTRoM2ExIDEgMCAwIDEgMSAxdjJoLTZ2LTJhMSAxIDAgMCAxIDEtMWgxeiIgZmlsbD0iI0ZGQzczMyIvPgogICAgPHBhdGggZD0iTTI1IDMxaDNhMSAxIDAgMCAxIDEgMXYyaC02di0yYTEgMSAwIDAgMSAxLTFoMXoiIGZpbGw9IiNGRkM3MzMiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgMCAxIDM3IDApIi8+CiAgICA8cGF0aCBkPSJNMTYgMjdjMC0yLjIxIDEuNzkyLTQgNC00czQgMS43OSA0IDQiIHN0cm9rZT0iI0ZGRiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGZpbGw9IiMwMDAiIGQ9Ik0xOCAyMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6bTYgMGEyIDIgMCAxIDEgMCA0IDIgMiAwIDAgMSAwLTR6Ii8+CiAgPC9nPgo8L3N2Zz4=";
     sprite.onload = () => {
         goblinSpriteRef.current = sprite;
     };
@@ -162,9 +157,19 @@ const GameCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if(gameOver && (e.key === ' ' || e.key.toLowerCase() === 'enter')) {
+    const handleInput = () => {
+        if (gameState === 'waiting' || gameState === 'over') {
             startGame();
+        } else if (gameState === 'playing') {
+            keysPressed.current[' '] = true; // Treat tap as jump
+        }
+    };
+     const handleInputRelease = () => {
+        keysPressed.current[' '] = false;
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if(gameState !== 'playing') {
+            if (e.key === ' ' || e.key.toLowerCase() === 'enter') startGame();
             return;
         }
         keysPressed.current[e.key.toLowerCase()] = true;
@@ -172,31 +177,19 @@ const GameCanvas: React.FC = () => {
     const handleKeyUp = (e: KeyboardEvent) => {
         keysPressed.current[e.key.toLowerCase()] = false;
     };
-    const handleTouchStart = (e: TouchEvent) => {
-        e.preventDefault();
-        if(gameOver) {
-            startGame();
-            return;
-        }
-        keysPressed.current[' '] = true; // Treat tap as jump
-    };
-     const handleTouchEnd = (e: TouchEvent) => {
-        e.preventDefault();
-        keysPressed.current[' '] = false;
-    };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    canvas.addEventListener('touchstart', handleTouchStart);
-    canvas.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('touchstart', handleInput);
+    canvas.addEventListener('touchend', handleInputRelease);
 
 
-    const gameLoop = () => {
-      if (!canvasRef.current || !ctx) return;
-      const player = playerRef.current;
+    const update = () => {
+        if (gameState !== 'playing') return;
+        const player = playerRef.current;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
 
-      // Update logic
-      if (!gameOver) {
         worldX.current += gameSpeed.current;
         gameSpeed.current = Math.min(5, gameSpeed.current + 0.001);
 
@@ -236,8 +229,6 @@ const GameCanvas: React.FC = () => {
             }
         });
         
-        // Separate logic for coin collection
-        let newScore = score;
         coinsRef.current.forEach(coin => {
             if (!coin.isCollected) {
                 const coinX = coin.x - worldX.current;
@@ -245,20 +236,16 @@ const GameCanvas: React.FC = () => {
                 const dy = coin.y - (player.y + player.height / 2);
                 if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
                     coin.isCollected = true;
-                    newScore += 10;
+                    setScore(prev => prev + 10);
                 }
             }
         });
-        if (newScore !== score) {
-            setScore(newScore);
-        }
 
         if(player.x < 0) player.x = 0;
         if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
         
-        // Game Over Condition - ONLY check for falling
         if(player.y > canvas.height + 100) {
-            setGameOver(true);
+            setGameState('over');
         }
 
         if (lastPlatformX.current - worldX.current < canvas.width + 200) {
@@ -266,95 +253,102 @@ const GameCanvas: React.FC = () => {
         }
 
         platformsRef.current = platformsRef.current.filter(p => p.x + p.width - worldX.current > -50);
-        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > -50);
-      }
-
-      // ---- Drawing ----
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > -50 && !c.isCollected);
+    }
+    
+    const draw = () => {
+        if (!canvasRef.current || !ctx) return;
+        const player = playerRef.current;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      ctx.fillStyle = '#639BFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.fillStyle = '#4A2E20';
-      ctx.strokeStyle = '#2d1b13';
-      ctx.lineWidth = 4;
-      platformsRef.current.forEach(p => {
-        ctx.fillRect(p.x - worldX.current, p.y, p.width, p.height);
-        ctx.strokeRect(p.x - worldX.current, p.y, p.width, p.height);
-      });
-      
-      ctx.fillStyle = '#FFD700';
-      ctx.strokeStyle = '#DAA520';
-      ctx.lineWidth = 3;
-      coinsRef.current.forEach(c => {
-        if (!c.isCollected) {
-            ctx.beginPath();
-            ctx.arc(c.x - worldX.current, c.y, c.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.font = 'bold 12px "Space Grotesk"';
-            ctx.fillStyle = '#DAA520';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('$', c.x - worldX.current, c.y+1);
-        }
-      });
-      
-      if (goblinSpriteRef.current) {
-        ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
-      } else {
-        ctx.fillStyle = 'green';
-        ctx.fillRect(player.x, player.y, player.width, player.height);
-      }
-      
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 30px "Space Grotesk", sans-serif';
-      ctx.textAlign = 'left';
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 5;
-      ctx.strokeText(`Score: ${score}`, 20, 50);
-      ctx.fillText(`Score: ${score}`, 20, 50);
-
-      if (gameOver) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillStyle = '#639BFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        ctx.fillStyle = 'white';
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 60px "Space Grotesk", sans-serif';
-        ctx.shadowColor = 'black';
-        ctx.shadowBlur = 10;
-        ctx.fillText(score > 0 ? "Game Over" : "Goblin Gold Grab", canvas.width / 2, canvas.height / 2 - 80);
-        
-        ctx.font = '30px "Space Grotesk", sans-serif';
-        ctx.fillText(score > 0 ? `Your Score: ${score}` : "Tap or Press Space to Start", canvas.width / 2, canvas.height / 2);
-        
-        if (score > 0) {
-           ctx.font = '24px "Space Grotesk", sans-serif';
-           ctx.fillText("Tap or Press Space to Play Again", canvas.width / 2, canvas.height / 2 + 50);
+      
+        ctx.fillStyle = '#4A2E20';
+        ctx.strokeStyle = '#2d1b13';
+        ctx.lineWidth = 4;
+        platformsRef.current.forEach(p => {
+            ctx.fillRect(p.x - worldX.current, p.y, p.width, p.height);
+            ctx.strokeRect(p.x - worldX.current, p.y, p.width, p.height);
+        });
+      
+        ctx.fillStyle = '#FFD700';
+        ctx.strokeStyle = '#DAA520';
+        ctx.lineWidth = 3;
+        coinsRef.current.forEach(c => {
+            if (!c.isCollected) {
+                ctx.beginPath();
+                ctx.arc(c.x - worldX.current, c.y, c.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.font = 'bold 12px "Space Grotesk"';
+                ctx.fillStyle = '#DAA520';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('$', c.x - worldX.current, c.y+1);
+            }
+        });
+      
+        if (goblinSpriteRef.current) {
+            ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
+        } else {
+            ctx.fillStyle = 'green';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
         }
-        ctx.shadowBlur = 0;
-      }
+      
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 30px "Space Grotesk", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 5;
+        ctx.strokeText(`Score: ${score}`, 20, 50);
+        ctx.fillText(`Score: ${score}`, 20, 50);
 
-      gameLoopId.current = requestAnimationFrame(gameLoop);
+        if (gameState === 'waiting' || gameState === 'over') {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 60px "Space Grotesk", sans-serif';
+            ctx.shadowColor = 'black';
+            ctx.shadowBlur = 10;
+            ctx.fillText(gameState === 'over' ? "Game Over" : "Goblin Gold Grab", canvas.width / 2, canvas.height / 2 - 80);
+            
+            ctx.font = '30px "Space Grotesk", sans-serif';
+            if (gameState === 'over') {
+                 ctx.fillText(`Your Score: ${score}`, canvas.width / 2, canvas.height / 2);
+                 ctx.font = '24px "Space Grotesk", sans-serif';
+                 ctx.fillText("Tap or Press Space to Play Again", canvas.width / 2, canvas.height / 2 + 50);
+            } else {
+                 ctx.fillText("Tap or Press Space to Start", canvas.width / 2, canvas.height / 2);
+            }
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    const gameLoop = () => {
+        update();
+        draw();
+        gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
-    startGame(); // Initial start
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchstart', handleInput);
+      canvas.removeEventListener('touchend', handleInputRelease);
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [score, gameOver, startGame, generateNewPlatform]);
+  }, [gameState, score, startGame, generateNewPlatform]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default GoblinGoldGrab;
+
+    
