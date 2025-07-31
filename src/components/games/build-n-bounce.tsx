@@ -21,7 +21,6 @@ type Tile = {
 
 const TILE_WIDTH = 80;
 const TILE_HEIGHT = 20;
-const GRID_SIZE = 20;
 
 const BuildNBounce: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -45,6 +44,7 @@ const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'waiting' | 'playing' | 'over'>('waiting');
   const [score, setScore] = useState(0);
+  const [tileLimit, setTileLimit] = useState(3);
 
   const playerRef = useRef<Player>({ x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0 });
   const tilesRef = useRef<Tile[]>([]);
@@ -61,6 +61,7 @@ const GameCanvas: React.FC = () => {
     if (!canvas) return;
     
     setScore(0);
+    setTileLimit(3);
     cameraY.current = 0;
 
     playerRef.current = {
@@ -89,7 +90,7 @@ const GameCanvas: React.FC = () => {
   }, []);
 
   const placeTile = useCallback((e: MouseEvent | TouchEvent) => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || tileLimit <= 0) return;
     const canvas = canvasRef.current;
     if(!canvas) return;
 
@@ -110,16 +111,33 @@ const GameCanvas: React.FC = () => {
     const gridX = Math.floor(x / TILE_WIDTH) * TILE_WIDTH;
     const gridY = Math.floor((y + cameraY.current) / TILE_HEIGHT) * TILE_HEIGHT;
 
-    // Prevent placing on existing tiles
-    if(!tilesRef.current.some(t => t.x === gridX && t.y === gridY)) {
+    // Prevent placing on existing tiles or too close to player
+    const player = playerRef.current;
+    const playerRect = {
+      x: player.x,
+      y: player.y,
+      width: player.width,
+      height: player.height
+    };
+    const newTileRect = {x: gridX, y: gridY, width: TILE_WIDTH, height: TILE_HEIGHT};
+    
+    const isOverlappingPlayer = 
+        playerRect.x < newTileRect.x + newTileRect.width &&
+        playerRect.x + playerRect.width > newTileRect.x &&
+        playerRect.y < newTileRect.y + newTileRect.height &&
+        playerRect.y + playerRect.height > newTileRect.y;
+
+
+    if(!tilesRef.current.some(t => t.x === gridX && t.y === gridY) && !isOverlappingPlayer) {
         tilesRef.current.push({
             x: gridX,
             y: gridY,
             width: TILE_WIDTH,
             height: TILE_HEIGHT
         });
+        setTileLimit(prev => prev - 1);
     }
-  }, [gameState]);
+  }, [gameState, tileLimit]);
 
 
   useEffect(() => {
@@ -167,11 +185,13 @@ const GameCanvas: React.FC = () => {
           player.x + player.width > tile.x &&
           player.x < tile.x + tile.width &&
           player.y + player.height > tile.y &&
-          player.y + player.height < tile.y + TILE_HEIGHT + player.vy
+          player.y + player.height < tile.y + TILE_HEIGHT + player.vy &&
+          player.vy > 0
         ) {
           player.vy = JUMP_POWER;
           player.y = tile.y - player.height;
           onPlatform = true;
+          setTileLimit(3); // Reset tile limit on bounce
         }
       });
       
@@ -196,17 +216,17 @@ const GameCanvas: React.FC = () => {
       }
 
       // Remove off-screen tiles
-      tilesRef.current = tilesRef.current.filter(t => t.y > cameraY.current - TILE_HEIGHT);
+      tilesRef.current = tilesRef.current.filter(t => t.y > cameraY.current - TILE_HEIGHT * 2);
     };
 
     const draw = () => {
       if (!canvasRef.current || !ctx) return;
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Translate camera
       ctx.translate(0, -cameraY.current);
 
-      const player = playerRef.current;
-      
       // Draw background gradient
       const grad = ctx.createLinearGradient(0, cameraY.current, 0, cameraY.current + canvas.height);
       grad.addColorStop(0, '#1e293b');
@@ -225,6 +245,7 @@ const GameCanvas: React.FC = () => {
       });
 
       // Draw player
+      const player = playerRef.current;
       ctx.fillStyle = '#10b981';
       ctx.fillRect(player.x, player.y, player.width, player.height);
       
@@ -234,16 +255,20 @@ const GameCanvas: React.FC = () => {
 
       ctx.restore(); // Restore context to draw UI
 
-      // Draw score
+      // Draw UI
       ctx.fillStyle = 'white';
       ctx.font = 'bold 30px "Space Grotesk", sans-serif';
       ctx.textAlign = 'left';
       ctx.strokeStyle = 'black';
       ctx.lineWidth = 5;
+      
       ctx.strokeText(`Score: ${score}`, 20, 50);
       ctx.fillText(`Score: ${score}`, 20, 50);
+      
+      ctx.strokeText(`Slabs: ${tileLimit}`, 20, 90);
+      ctx.fillText(`Slabs: ${tileLimit}`, 20, 90);
 
-      // Draw UI text
+      // Draw UI text for game state
       if (gameState !== 'playing') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -283,9 +308,11 @@ const GameCanvas: React.FC = () => {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameState, score, startGame, placeTile]);
+  }, [gameState, score, startGame, placeTile, tileLimit]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full cursor-pointer" />;
 };
 
 export default BuildNBounce;
+
+    
