@@ -255,7 +255,9 @@ const GameCanvas: React.FC = () => {
       // Draw player
       const player = playerRef.current;
       ctx.fillStyle = '#10b981';
-      ctx.fillRect(player.x, player.y, player.width, player.height);
+      ctx.beginPath();
+      ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width / 2, 0, Math.PI * 2);
+      ctx.fill();
       
       // Draw lava
       ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
