@@ -46,6 +46,8 @@ const GameCanvas: React.FC = () => {
   const ballRef = useRef<Body>({ x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98 });
   
   const gameLoopId = useRef<number>();
+  let countdownIntervalRef = useRef<NodeJS.Timeout>();
+
 
   const GRAVITY = 0.6;
   const JUMP_POWER = -12;
@@ -67,6 +69,20 @@ const GameCanvas: React.FC = () => {
     setGameState('playing');
     setCountdown(3);
     resetPositions();
+
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
   }, [resetPositions]);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
@@ -84,6 +100,20 @@ const GameCanvas: React.FC = () => {
             setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
             setCountdown(3);
             resetPositions();
+            
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+            }
+            countdownIntervalRef.current = setInterval(() => {
+              setCountdown(prev => {
+                if (prev <= 1) {
+                  if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+                  return 0;
+                }
+                return prev - 1;
+              });
+            }, 1000);
+
             setTimeout(() => setLastGoal(null), 2000);
         }
         return newScores;
@@ -101,8 +131,8 @@ const GameCanvas: React.FC = () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         if (gameState !== 'playing') {
-            startGame();
             setGameState('waiting');
+            resetPositions();
         } else {
             resetPositions();
         }
@@ -110,10 +140,16 @@ const GameCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
+    const handleStartAction = () => {
+        if (gameState !== 'playing') {
+            startGame();
+        }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       keysPressed.current[e.key.toLowerCase()] = true;
       if (gameState !== 'playing' && (e.key === ' ' || e.key === 'Enter')) {
-        startGame();
+        handleStartAction();
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -122,11 +158,14 @@ const GameCanvas: React.FC = () => {
     
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('mousedown', handleStartAction);
+    canvas.addEventListener('touchstart', handleStartAction);
 
 
     const update = () => {
-      if (gameState !== 'playing') return;
-      if (countdown > 0) return;
+      if (gameState !== 'playing' || countdown > 0) {
+          return;
+      }
       
       const entities = [player1Ref.current, player2Ref.current, ballRef.current];
       const player1 = player1Ref.current;
@@ -298,7 +337,7 @@ const GameCanvas: React.FC = () => {
             ctx.fillText(gameState === 'over' ? winner : "Soccer Scramble", canvas.width / 2, canvas.height / 2 - 80);
             
             ctx.font = '30px "Space Grotesk", sans-serif';
-            ctx.fillText("Press Space or Enter to Play", canvas.width / 2, canvas.height / 2);
+            ctx.fillText("Click or Tap to Play", canvas.width / 2, canvas.height / 2);
             ctx.shadowBlur = 0;
         } else if (countdown > 0) {
             ctx.fillStyle = 'white';
@@ -314,34 +353,26 @@ const GameCanvas: React.FC = () => {
         gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
-    let countdownInterval: NodeJS.Timeout | undefined;
-    if (gameState === 'playing' && countdown > 0) {
-      countdownInterval = setInterval(() => {
-        setCountdown(prev => {
-            if (prev <= 1) {
-                clearInterval(countdownInterval);
-                return 0;
-            }
-            return prev - 1;
-        });
-      }, 1000);
-    }
-    
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      if(canvas) {
+        canvas.removeEventListener('mousedown', handleStartAction);
+        canvas.removeEventListener('touchstart', handleStartAction);
+      }
+
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
-      if (countdownInterval) {
-        clearInterval(countdownInterval);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
       }
     };
   }, [gameState, scores, countdown, lastGoal, handleGoal, resetPositions, startGame]);
 
-  return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
+  return <canvas ref={canvasRef} className="touch-none w-full h-full cursor-pointer" />;
 };
 
 export default SoccerScramble;
