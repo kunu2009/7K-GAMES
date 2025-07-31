@@ -113,8 +113,8 @@ const GameCanvas: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const minGap = 100;
-    const maxGap = 200;
+    const minGap = 80;
+    const maxGap = 150;
     const minWidth = 150;
     const maxWidth = 350;
 
@@ -358,5 +358,7 @@ const GameCanvas: React.FC = () => {
 };
 
 export default GoblinGoldGrab;
+
+    
 
     
