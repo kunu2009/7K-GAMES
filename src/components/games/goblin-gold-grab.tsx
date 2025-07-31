@@ -29,11 +29,6 @@ type Coin = {
   isCollected: boolean;
 };
 
-type ParallaxLayer = {
-    image: HTMLImageElement | null;
-    speed: number;
-};
-
 const GoblinGoldGrab: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
 
@@ -71,8 +66,44 @@ const GameCanvas: React.FC = () => {
 
   // Constants
   const GRAVITY = 0.6;
-  const JUMP_POWER = -14;
+  const JUMP_POWER = -12;
   const PLAYER_SPEED = 5;
+
+  const generateNewPlatform = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const minGap = 100;
+    const maxGap = 200;
+    const minWidth = 150;
+    const maxWidth = 350;
+
+    const gap = minGap + Math.random() * (maxGap - minGap);
+    const newX = lastPlatformX.current + gap;
+    const newWidth = minWidth + Math.random() * (maxWidth - minWidth);
+    
+    const yVariation = 150;
+    const lastPlatform = platformsRef.current[platformsRef.current.length - 1];
+    let newY = lastPlatform.y + (Math.random() - 0.5) * yVariation * 2;
+    
+    newY = Math.max(200, Math.min(canvas.height - 100, newY));
+
+    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 100 };
+    platformsRef.current.push(newPlatform);
+    lastPlatformX.current = newX + newWidth;
+
+    // Add coins on the new platform
+    const numCoins = Math.floor(Math.random() * 3) + 1;
+    for(let i = 0; i < numCoins; i++) {
+        const coin: Coin = {
+            x: newPlatform.x + (i + 1) * (newPlatform.width / (numCoins + 2)),
+            y: newPlatform.y - 40,
+            size: 15,
+            isCollected: false,
+        };
+        coinsRef.current.push(coin);
+    }
+  }, []);
 
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -107,43 +138,7 @@ const GameCanvas: React.FC = () => {
     }
     
     setGameOver(false);
-  }, []);
-
-  const generateNewPlatform = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const minGap = 80;
-    const maxGap = 120;
-    const minWidth = 150;
-    const maxWidth = 350;
-
-    const gap = minGap + Math.random() * (maxGap - minGap);
-    const newX = lastPlatformX.current + gap;
-    const newWidth = minWidth + Math.random() * (maxWidth - minWidth);
-    
-    const yVariation = 150;
-    const lastPlatform = platformsRef.current[platformsRef.current.length - 1];
-    let newY = lastPlatform.y + (Math.random() - 0.5) * yVariation * 2;
-    
-    newY = Math.max(200, Math.min(canvas.height - 100, newY));
-
-    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 100 };
-    platformsRef.current.push(newPlatform);
-    lastPlatformX.current = newX + newWidth;
-
-    // Add coins on the new platform
-    const numCoins = Math.floor(Math.random() * 4) + 2;
-    for(let i = 0; i < numCoins; i++) {
-        const coin: Coin = {
-            x: newPlatform.x + (i + 1) * (newPlatform.width / (numCoins + 1)),
-            y: newPlatform.y - 30,
-            size: 12,
-            isCollected: false,
-        };
-        coinsRef.current.push(coin);
-    }
-  }, []);
+  }, [generateNewPlatform]);
   
   useEffect(() => {
     const sprite = new Image();
@@ -168,6 +163,10 @@ const GameCanvas: React.FC = () => {
     window.addEventListener('resize', handleResize);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+        if(gameOver && (e.key === ' ' || e.key.toLowerCase() === 'enter')) {
+            startGame();
+            return;
+        }
         keysPressed.current[e.key.toLowerCase()] = true;
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -179,7 +178,7 @@ const GameCanvas: React.FC = () => {
             startGame();
             return;
         }
-        keysPressed.current[' '] = true;
+        keysPressed.current[' '] = true; // Treat tap as jump
     };
      const handleTouchEnd = (e: TouchEvent) => {
         e.preventDefault();
@@ -194,16 +193,13 @@ const GameCanvas: React.FC = () => {
 
     const gameLoop = () => {
       if (!canvasRef.current || !ctx) return;
-      
       const player = playerRef.current;
 
       // Update logic
       if (!gameOver) {
-        // ---- World Scrolling ----
         worldX.current += gameSpeed.current;
         gameSpeed.current = Math.min(5, gameSpeed.current + 0.001);
 
-        // ---- Player movement ----
         player.vx = 0;
         if (keysPressed.current['a'] || keysPressed.current['arrowleft']) {
             player.vx = -PLAYER_SPEED;
@@ -213,13 +209,11 @@ const GameCanvas: React.FC = () => {
         }
         player.x += player.vx;
         
-        // ---- Player Jumping & Gravity ----
         if ((keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup']) && player.onGround && !player.isJumping) {
             player.vy = JUMP_POWER;
             player.onGround = false;
             player.isJumping = true;
         }
-        // Prevent continuous jumping if key is held down
         if (!(keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup'])) {
             player.isJumping = false;
         }
@@ -227,7 +221,6 @@ const GameCanvas: React.FC = () => {
         player.vy += GRAVITY;
         player.y += player.vy;
         
-        // ---- Collision Detection ----
         player.onGround = false;
         platformsRef.current.forEach(platform => {
             const platX = platform.x - worldX.current;
@@ -235,7 +228,7 @@ const GameCanvas: React.FC = () => {
                 player.x < platX + platform.width &&
                 player.x + player.width > platX &&
                 player.y + player.height > platform.y &&
-                player.y + player.height < platform.y + 20 + player.vy // Check if player is just above platform
+                player.y + player.height < platform.y + 20 + player.vy
             ) {
                 player.vy = 0;
                 player.y = platform.y - player.height;
@@ -243,7 +236,8 @@ const GameCanvas: React.FC = () => {
             }
         });
         
-        // Coin collection
+        // Separate logic for coin collection
+        let newScore = score;
         coinsRef.current.forEach(coin => {
             if (!coin.isCollected) {
                 const coinX = coin.x - worldX.current;
@@ -251,61 +245,61 @@ const GameCanvas: React.FC = () => {
                 const dy = coin.y - (player.y + player.height / 2);
                 if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
                     coin.isCollected = true;
-                    setScore(prev => prev + 10);
+                    newScore += 10;
                 }
             }
         });
+        if (newScore !== score) {
+            setScore(newScore);
+        }
 
-        // ---- Boundary checks ----
         if(player.x < 0) player.x = 0;
         if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
         
-        // ---- Game Over Condition ----
-        if(player.y > canvas.height + 200) { // Fall off screen
+        // Game Over Condition - ONLY check for falling
+        if(player.y > canvas.height + 100) {
             setGameOver(true);
         }
 
-        // ---- Generate new platforms ----
         if (lastPlatformX.current - worldX.current < canvas.width + 200) {
             generateNewPlatform();
         }
 
-        // Clean up old objects
-        platformsRef.current = platformsRef.current.filter(p => p.x + p.width - worldX.current > 0);
-        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > 0);
-      } else {
-        if(keysPressed.current[' '] || keysPressed.current['enter']) {
-            startGame();
-        }
+        platformsRef.current = platformsRef.current.filter(p => p.x + p.width - worldX.current > -50);
+        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > -50);
       }
 
       // ---- Drawing ----
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw background
       ctx.fillStyle = '#639BFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw platforms
       ctx.fillStyle = '#4A2E20';
+      ctx.strokeStyle = '#2d1b13';
+      ctx.lineWidth = 4;
       platformsRef.current.forEach(p => {
         ctx.fillRect(p.x - worldX.current, p.y, p.width, p.height);
+        ctx.strokeRect(p.x - worldX.current, p.y, p.width, p.height);
       });
       
-      // Draw coins
-      ctx.fillStyle = 'gold';
-      ctx.strokeStyle = 'darkgoldenrod';
-      ctx.lineWidth = 2;
+      ctx.fillStyle = '#FFD700';
+      ctx.strokeStyle = '#DAA520';
+      ctx.lineWidth = 3;
       coinsRef.current.forEach(c => {
         if (!c.isCollected) {
             ctx.beginPath();
             ctx.arc(c.x - worldX.current, c.y, c.size, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
+            ctx.font = 'bold 12px "Space Grotesk"';
+            ctx.fillStyle = '#DAA520';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', c.x - worldX.current, c.y+1);
         }
       });
       
-      // Draw player
       if (goblinSpriteRef.current) {
         ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
       } else {
@@ -313,20 +307,23 @@ const GameCanvas: React.FC = () => {
         ctx.fillRect(player.x, player.y, player.width, player.height);
       }
       
-      // Draw Score
       ctx.fillStyle = 'white';
       ctx.font = 'bold 30px "Space Grotesk", sans-serif';
       ctx.textAlign = 'left';
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 5;
+      ctx.strokeText(`Score: ${score}`, 20, 50);
       ctx.fillText(`Score: ${score}`, 20, 50);
 
-      // Draw Game Over Screen
       if (gameOver) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
         ctx.font = 'bold 60px "Space Grotesk", sans-serif';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 10;
         ctx.fillText(score > 0 ? "Game Over" : "Goblin Gold Grab", canvas.width / 2, canvas.height / 2 - 80);
         
         ctx.font = '30px "Space Grotesk", sans-serif';
@@ -336,12 +333,13 @@ const GameCanvas: React.FC = () => {
            ctx.font = '24px "Space Grotesk", sans-serif';
            ctx.fillText("Tap or Press Space to Play Again", canvas.width / 2, canvas.height / 2 + 50);
         }
+        ctx.shadowBlur = 0;
       }
 
       gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
-    startGame();
+    startGame(); // Initial start
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
