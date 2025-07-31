@@ -30,10 +30,10 @@ const games = [
   { 
     slug: "soccer-scramble", 
     title: "Soccer Scramble", 
-    description: "A chaotic, physics-based soccer game.", 
-    players: "2-4", 
+    description: "A physics-based 2D soccer game for 2 players.", 
+    players: "2", 
     image: "https://placehold.co/600x400.png",
-    hint: "sports game"
+    hint: "soccer physics"
   },
 ];
 
