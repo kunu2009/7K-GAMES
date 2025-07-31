@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import AstroClash from '@/components/games/astro-clash';
 import GoblinGoldGrab from '@/components/games/goblin-gold-grab';
 import BuildNBounce from '@/components/games/build-n-bounce';
-import SoccerScramble from '@/components/games/soccer-scramble';
+import RiftRacers from '@/components/games/rift-racers';
 import { useScreen } from '@/hooks/use-screen';
 import { Button } from '@/components/ui/button';
 import { Maximize, Minimize } from 'lucide-react';
@@ -27,9 +27,9 @@ const games = [
     component: <BuildNBounce />,
   },
   {
-    slug: 'soccer-scramble',
-    title: 'Soccer Scramble',
-    component: <SoccerScramble />,
+    slug: 'rift-racers',
+    title: 'Rift Racers',
+    component: <RiftRacers />,
   },
 ];
 

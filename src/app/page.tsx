@@ -28,12 +28,12 @@ const games = [
     hint: "abstract puzzle"
   },
   { 
-    slug: "soccer-scramble", 
-    title: "Soccer Scramble", 
-    description: "A physics-based 2D soccer game for 2 players.", 
-    players: "2", 
+    slug: "rift-racers", 
+    title: "Rift Racers", 
+    description: "A top-down 2D racer with chaotic rift portals.", 
+    players: "1-2", 
     image: "https://placehold.co/600x400.png",
-    hint: "soccer physics"
+    hint: "neon racing"
   },
 ];
 
