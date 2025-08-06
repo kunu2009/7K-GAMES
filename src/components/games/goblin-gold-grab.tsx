@@ -34,6 +34,13 @@ type Cloud = {
   speed: number;
 };
 
+type SpriteInfo = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const GoblinGoldGrab: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
 
@@ -68,7 +75,9 @@ const GameCanvas: React.FC = () => {
   const lastPlatformX = useRef(0);
   
   const gameLoopId = useRef<number>();
-  const goblinSpriteRef = useRef<HTMLImageElement | null>(null);
+  const spritesheetRef = useRef<HTMLImageElement | null>(null);
+  const playerSpriteInfo = useRef<SpriteInfo>({ x: 448, y: 208, width: 48, height: 55 });
+
 
   const GRAVITY = 0.5;
   const JUMP_POWER = -11;
@@ -119,8 +128,8 @@ const GameCanvas: React.FC = () => {
     playerRef.current = {
         x: 150,
         y: 100,
-        width: 40,
-        height: 40,
+        width: 48, // Match sprite width
+        height: 55, // Match sprite height
         vx: 0,
         vy: 0,
         onGround: false,
@@ -154,9 +163,9 @@ const GameCanvas: React.FC = () => {
   
   useEffect(() => {
     const sprite = new Image();
-    sprite.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNSwzQzE5LjQ3NywzIDE1LDcuNDc3IDE1LDEzdi0xYTQsNCwwLDAsMCwtOCwwYTQsNCwwLDAsMCw4LDB2MWMwLDUuNTIzIDQuNDc3LDEwIDEwLDEwczEwLDQuNDc3IDEwLDEwVjEzYTQsNCwwLDAsMCw4LDBhNCw0LDAsMCwwLC04LDBWMTNjMCwtNS41MjMgLTQuNDc3LC0xMCAtMTAsLTEweiIgZmlsbD0iIzRDQTY1MSIvPjxwYXRoIGQ9Ik0yNSwzN2E1LDUgMCwwLDEgNS44Myw0SDI1YTgsOCAwLDAgMCwtOCwtOGE4LjAzLDguMDMgMCwwLCAwIDUsLTcuNTkyYzAuNzgzLDAuMzYyIDEuNjM1LDAuNTkyIDIuNSwwLjU5MmguNWMxLjkzMywwIDMuNSwtMS41NjcgMy41LC0zLjVzLTEuNTY3LC0zLjUgLTMuNSwtMy41aC0uNWE2Ljk3LDYuOTcgMCwwLDEgLTIuNSwtMC41OTJDNy4wMywxOC44MzQgMSwyNS42NSAxLDM1YzAsNS41MjMgNC40NzcsMTAgMTAsMTBoNC4xNzJhNSw1IDAsMCwxIDQuMTY3LC00aC0xLjMzOXptMTIsMGMwLDAuMDM3IC0wLjAxNSwwLjA3IC0wLjAyMywwLjEwNGE0Ljk4Miw0Ljk4MiAwLDAgMSwtMC4xMzksMC42MzRDNDAuMjc1LDQxLjM2MiA0Myw0NC4wMzQgNDMsNDhjMCwyLjIwOCAtMi4wMSwxLjUgLTQsMS41aC0zYy0xLjEwNCwwIC0yLC0wLjg5NiAtMiwtMnMwLjg5NiwtMiAyLC0yaDNjMi40ODgsMCAzLC0xLjM3OCAtMiwtM2E0LDQgMCwwLDAsLTMuMDA2LC0xLjQzMmMtMC4zNDgsLTEuMzY4IC0wLjkxMiwtMi42MDUgLTIuMDY0LC0zLjU2OGMtMC43MiwtMC42IC0xLjU1LC0wLjk0NyAtMi40MywtMUM0MC4xMzMsMjMuMzkgNDUsMTkuNjA3IDQ1LDE0YzAsLTUuMTIzIC0zLjg2MywtOS4yOTkgLTguNjI1LC05LjkzMUE5Ljk1LDkuOTUgMCwwLDEgNDUsNy41YzAsNC4xNDIgLTMuMzU4LDcuNSAtNy41LDcuNXMtNy41LC0zLjM1OCAtNy41LC03LjUgMy4zNTgsLTcuNSA3LjUsLTcuNWE5Ljk1Miw5Ljk1MiAwLDAgMSA4LjYyNSw0LjA2OUMzNi4xMzcsNC43MDEgMzIsMSAzMiwxQzI2LjQ3NywxIDIyLDUuNDc3IDIyLDExczQuNDc3LDEwIDEwLDEwYzAuNzEyLDAgMS4zOTcsLTAuMDc0IDIuMDY0LC0wLjIwMmMyLjE5OSwyLjA2NCAzLjU2OSw0Ljk2IDQuOTYsNC45NiAwLDAgMSwgMiAwIDIsLTEuNTIgMCwtMi40MTQgLTEuMzkyIC0zLjg0MiwtNS40ODJ6IiBmaWxsPSIjMzk4MDRBIi8+PHBhdGggZD0iTTIyLDM4YTUsNSAwLDAgMSA1LC01aDEwYTUsNSAwLDAgMSA1LDUgNSw1IDAsMCwxLC01LDVoLTEwYTUsNSAwLDAgMSwtNSwtNXoiIGZpbGw9IiM4QjVFMkQiLz48cGF0aCBkPSJNMzUsMzVhMiwyIDAsMSwwIDAsNCAyLDIgMCwwLDAsMCwtNHptLTIwLDBhMiwyIDAsMSwwIDAsNCAyLDIgMCwwLDAsMCwtNHoiIGZpbGw9IiNGRkZGRkYiLz48cGF0aCBkPSJNMzAsMjZhNCw0IDAsMSwwLC04LDAgNCw0IDAsMCwwIDgsMHoiIGZpbGw9IiMwMDAwMDAiLz48cGF0aCBkPSJNMzIsNDBoLTdjLTEuMTA0LDAgLTIsLTAuODk2IC0yLC0yczAuODk2LC0yIDIsLTJoN1YzMmwxLjUsLTEgMS41LDF2OGMwLDEuMTA0LC0wLjg5NiwyIC0yLDJ6IiBmaWxsPSIjOEM1RTJELi8+PC9nPjwvc3ZnPg==";
+    sprite.src = "/Graphics/Graphics/Spritesheet/sprites.png";
     sprite.onload = () => {
-        goblinSpriteRef.current = sprite;
+        spritesheetRef.current = sprite;
     };
   }, []);
 
@@ -349,13 +358,19 @@ const GameCanvas: React.FC = () => {
         });
       
         // Draw player
-        if (gameState === 'playing' || gameState === 'over') {
-          if (goblinSpriteRef.current) {
-              ctx.drawImage(goblinSpriteRef.current, player.x, player.y, player.width, player.height);
-          } else {
-              ctx.fillStyle = 'green';
-              ctx.fillRect(player.x, player.y, player.width, player.height);
-          }
+        if ((gameState === 'playing' || gameState === 'over') && spritesheetRef.current) {
+            const sprite = playerSpriteInfo.current;
+            ctx.drawImage(
+                spritesheetRef.current,
+                sprite.x,
+                sprite.y,
+                sprite.width,
+                sprite.height,
+                player.x,
+                player.y,
+                player.width,
+                player.height
+            );
         }
       
         // Draw score
