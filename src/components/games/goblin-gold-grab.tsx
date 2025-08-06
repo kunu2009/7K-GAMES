@@ -216,71 +216,34 @@ const GameCanvas: React.FC = () => {
     bg3.src = "/Graphics/Graphics/backgrounds/colored_mountains.png";
 
     const loadPromise = Promise.all([
+        new Promise(res => sprite.onload = res),
         new Promise(res => bg1.onload = res),
         new Promise(res => bg2.onload = res),
         new Promise(res => bg3.onload = res),
     ]);
 
     loadPromise.then(() => {
+        spritesheetRef.current = sprite;
         backgroundsRef.current = [
             { img: bg3, x: 0, speed: 0.1 },
             { img: bg2, x: 0, speed: 0.2 },
             { img: bg1, x: 0, speed: 0.4 },
-        ]
+        ];
+        
+        if (canvasRef.current) {
+            // Start the game loop only after all assets are loaded
+            const gameLoop = () => {
+                update();
+                draw();
+                gameLoopId.current = requestAnimationFrame(gameLoop);
+            };
+            gameLoopId.current = requestAnimationFrame(gameLoop);
+        }
     });
-  }, []);
 
-  const handlePlayerAction = useCallback(() => {
-    if (gameState === 'playing') {
-      const player = playerRef.current;
-      if (player.onGround && !player.isJumping) {
-        player.vy = JUMP_POWER;
-        player.onGround = false;
-        player.isJumping = true;
-        player.animState = 'jump';
-        player.animFrame = 0;
-      }
-    } else {
-      startGame();
-    }
-  }, [gameState, startGame]);
-  
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    keysPressed.current[e.key.toLowerCase()] = true;
-    if ((e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
-        e.preventDefault();
-        handlePlayerAction();
-    }
-  }, [handlePlayerAction]);
-
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    keysPressed.current[e.key.toLowerCase()] = false;
-    if(playerRef.current && playerRef.current.isJumping && !(e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
-      // Allow jump to end even if other keys are released
-    } else if(playerRef.current) {
-        playerRef.current.isJumping = false;
-    }
-  }, []);
-  
-  const handleTouchStart = useCallback((e: TouchEvent) => {
-      e.preventDefault();
-      handlePlayerAction();
-  }, [handlePlayerAction]);
-
-  const handleTouchEnd = useCallback((e: TouchEvent) => {
-      e.preventDefault();
-      if(playerRef.current) {
-          playerRef.current.isJumping = false;
-      }
-  }, []);
-
-  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
     const handleResize = () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -288,11 +251,41 @@ const GameCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+        e.preventDefault();
+        keysPressed.current[e.key.toLowerCase()] = true;
+        if ((e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
+            handlePlayerAction();
+        }
+    };
+  
+    const handleKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      keysPressed.current[e.key.toLowerCase()] = false;
+      if(playerRef.current && playerRef.current.isJumping && !(e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
+        // Allow jump to end even if other keys are released
+      } else if(playerRef.current) {
+          playerRef.current.isJumping = false;
+      }
+    };
+    
+    const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
+        handlePlayerAction();
+    };
+  
+    const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        if(playerRef.current) {
+            playerRef.current.isJumping = false;
+        }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    canvas.addEventListener('touchstart', handleTouchStart);
-    canvas.addEventListener('touchend', handleTouchEnd);
-
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    
     const update = () => {
         if (gameState !== 'playing') return;
         const player = playerRef.current;
@@ -380,7 +373,14 @@ const GameCanvas: React.FC = () => {
     }
     
     const draw = () => {
-        if (!canvasRef.current || !ctx || !spritesheetRef.current) return;
+        const ctx = canvasRef.current?.getContext('2d');
+        if (!canvasRef.current || !ctx || !spritesheetRef.current || backgroundsRef.current.length === 0) {
+            ctx?.clearRect(0, 0, canvasRef.current?.width || 0, canvasRef.current?.height || 0);
+            ctx?.fillStyle__ = '#639BFF'; // A simple fallback color
+            ctx?.fillRect(0, 0, canvasRef.current?.width || 0, canvasRef.current?.height || 0);
+            return;
+        }
+
         const player = playerRef.current;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       
@@ -474,14 +474,6 @@ const GameCanvas: React.FC = () => {
         }
     }
 
-    const gameLoop = () => {
-        update();
-        draw();
-        gameLoopId.current = requestAnimationFrame(gameLoop);
-    };
-    
-    gameLoopId.current = requestAnimationFrame(gameLoop);
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -493,11 +485,26 @@ const GameCanvas: React.FC = () => {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameState, score, startGame, generateNewPlatform, handleKeyDown, handleKeyUp, handlePlayerAction, handleTouchEnd, handleTouchStart]);
+  }, [gameState, score, startGame, generateNewPlatform]);
+
+
+  const handlePlayerAction = useCallback(() => {
+    if (gameState === 'playing') {
+      const player = playerRef.current;
+      if (player.onGround && !player.isJumping) {
+        player.vy = JUMP_POWER;
+        player.onGround = false;
+        player.isJumping = true;
+        player.animState = 'jump';
+        player.animFrame = 0;
+      }
+    } else {
+      startGame();
+    }
+  }, [gameState, startGame]);
+
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default GoblinGoldGrab;
-
-    
