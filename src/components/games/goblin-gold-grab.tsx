@@ -12,34 +12,56 @@ type Player = {
   vy: number;
   onGround: boolean;
   isJumping: boolean;
+  animFrame: number;
+  animState: 'idle' | 'run' | 'jump';
 };
 
 type Platform = {
   x: number;
   y: number;
   width: number;
-  height: number;
+  type: 'left' | 'mid' | 'right' | 'single';
 };
 
 type Coin = {
   x: number;
   y: number;
-  size: number;
+  width: number;
+  height: number;
+  animFrame: number;
 };
 
 type Cloud = {
   x: number;
   y: number;
-  size: number;
-  speed: number;
-};
-
-type SpriteInfo = {
-  x: number;
-  y: number;
   width: number;
   height: number;
+  speed: number;
+  spriteKey: string;
 };
+
+// Sprite coordinates from XML files
+const SPRITES: { [key: string]: { x: number; y: number; width: number; height: number } } = {
+  player_stand: { x: 448, y: 208, width: 48, height: 55 },
+  player_jump: { x: 440, y: 0, width: 50, height: 55 },
+  player_walk1: { x: 440, y: 57, width: 50, height: 56 },
+  player_walk2: { x: 440, y: 115, width: 50, height: 56 },
+  
+  grass_left: { x: 0, y: 360, width: 70, height: 70 },
+  grass_mid: { x: 72, y: 360, width: 70, height: 70 },
+  grass_right: { x: 144, y: 360, width: 70, height: 70 },
+  grass_single: { x: 432, y: 504, width: 70, height: 70 },
+
+  coin_1: { x: 492, y: 0, width: 30, height: 30 },
+  coin_2: { x: 492, y: 32, width: 30, height: 30 },
+  coin_3: { x: 492, y: 64, width: 30, height: 30 },
+  coin_4: { x: 492, y: 96, width: 30, height: 30 },
+
+  cloud1: { x: 0, y: 576, width: 128, height: 71 },
+  cloud2: { x: 130, y: 576, width: 128, height: 71 },
+  cloud3: { x: 260, y: 576, width: 128, height: 71 },
+};
+const TILE_SIZE = 70;
 
 const GoblinGoldGrab: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -66,54 +88,66 @@ const GameCanvas: React.FC = () => {
   const [gameState, setGameState] = useState<'waiting' | 'playing' | 'over'>('waiting');
   const [score, setScore] = useState(0);
 
-  const playerRef = useRef<Player>({ x: 150, y: 300, width: 40, height: 40, vx: 0, vy: 0, onGround: false, isJumping: false });
+  const playerRef = useRef<Player>({ x: 150, y: 300, width: 48, height: 55, vx: 0, vy: 0, onGround: false, isJumping: false, animFrame: 0, animState: 'idle' });
   const platformsRef = useRef<Platform[]>([]);
   const coinsRef = useRef<Coin[]>([]);
   const cloudsRef = useRef<Cloud[]>([]);
+  const backgroundsRef = useRef<{img: HTMLImageElement, x: number, speed: number}[]>([]);
   const worldX = useRef(0);
-  const gameSpeed = useRef(2.5);
+  const gameSpeed = useRef(3);
   const lastPlatformX = useRef(0);
+  const frameCount = useRef(0);
   
   const gameLoopId = useRef<number>();
   const spritesheetRef = useRef<HTMLImageElement | null>(null);
-  const playerSpriteInfo = useRef<SpriteInfo>({ x: 448, y: 208, width: 48, height: 55 });
 
 
   const GRAVITY = 0.5;
-  const JUMP_POWER = -11;
+  const JUMP_POWER = -12;
   const PLAYER_SPEED = 5;
 
   const generateNewPlatform = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    const minGap = 80;
-    const maxGap = 180;
-    const minWidth = 120;
-    const maxWidth = 300;
+    const minGap = 100;
+    const maxGap = 220;
+    const minWidthBlocks = 2;
+    const maxWidthBlocks = 5;
 
     const gap = minGap + Math.random() * (maxGap - minGap);
     const newX = lastPlatformX.current + gap;
-    const newWidth = minWidth + Math.random() * (maxWidth - minWidth);
+    const numBlocks = minWidthBlocks + Math.floor(Math.random() * (maxWidthBlocks - minWidthBlocks));
     
-    const yVariation = 80;
+    const yVariation = 100;
     const lastPlatform = platformsRef.current[platformsRef.current.length - 1];
     let newY = lastPlatform.y + (Math.random() - 0.5) * yVariation * 2;
     
-    newY = Math.max(200, Math.min(canvas.height - 150, newY));
+    newY = Math.max(250, Math.min(canvas.height - 150, newY));
 
-    const newPlatform: Platform = { x: newX, y: newY, width: newWidth, height: 40 };
-    platformsRef.current.push(newPlatform);
-    lastPlatformX.current = newX + newWidth;
+    for (let i = 0; i < numBlocks; i++) {
+        let type: Platform['type'] = 'mid';
+        if (numBlocks === 1) type = 'single';
+        else if (i === 0) type = 'left';
+        else if (i === numBlocks - 1) type = 'right';
 
-    const numCoins = Math.floor(Math.random() * 3) + 1;
-    for(let i = 0; i < numCoins; i++) {
-        const coin: Coin = {
-            x: newPlatform.x + (i + 1) * (newPlatform.width / (numCoins + 2)),
-            y: newPlatform.y - 40,
-            size: 15,
-        };
-        coinsRef.current.push(coin);
+        platformsRef.current.push({ x: newX + i * TILE_SIZE, y: newY, width: TILE_SIZE, type });
+    }
+    lastPlatformX.current = newX + numBlocks * TILE_SIZE;
+
+    const shouldPlaceCoins = Math.random() > 0.3;
+    if(shouldPlaceCoins) {
+        const numCoins = Math.floor(Math.random() * 3) + 1;
+        for(let i = 0; i < numCoins; i++) {
+            const coin: Coin = {
+                x: newX + (i + 1) * ((numBlocks * TILE_SIZE) / (numCoins + 2)),
+                y: newY - 60,
+                width: 30,
+                height: 30,
+                animFrame: Math.floor(Math.random() * 4)
+            };
+            coinsRef.current.push(coin);
+        }
     }
   }, []);
 
@@ -123,27 +157,33 @@ const GameCanvas: React.FC = () => {
 
     setScore(0);
     worldX.current = 0;
-    gameSpeed.current = 2.5;
+    gameSpeed.current = 3;
+    frameCount.current = 0;
     
     playerRef.current = {
         x: 150,
         y: 100,
-        width: 48, // Match sprite width
-        height: 55, // Match sprite height
+        width: 48,
+        height: 55,
         vx: 0,
         vy: 0,
         onGround: false,
-        isJumping: false
+        isJumping: false,
+        animFrame: 0,
+        animState: 'idle'
     };
 
     platformsRef.current = [];
     coinsRef.current = [];
     
-    const startPlatform: Platform = { x: 50, y: canvas.height - 100, width: 300, height: 40 };
-    platformsRef.current.push(startPlatform);
-    lastPlatformX.current = startPlatform.x + startPlatform.width;
+    const startPlatformWidth = 4 * TILE_SIZE;
+    for(let i=0; i<4; i++) {
+        let type: Platform['type'] = i === 0 ? 'left' : i === 3 ? 'right' : 'mid';
+        platformsRef.current.push({ x: 50 + i * TILE_SIZE, y: canvas.height - 100, width: TILE_SIZE, type });
+    }
+    lastPlatformX.current = 50 + startPlatformWidth;
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15; i++) {
         generateNewPlatform();
     }
     
@@ -151,9 +191,11 @@ const GameCanvas: React.FC = () => {
       for (let i = 0; i < 15; i++) {
         cloudsRef.current.push({
           x: Math.random() * canvas.width * 2,
-          y: Math.random() * (canvas.height / 2),
-          size: Math.random() * 50 + 20,
-          speed: Math.random() * 0.3 + 0.1,
+          y: Math.random() * (canvas.height / 2.5),
+          width: 128,
+          height: 71,
+          speed: Math.random() * 0.4 + 0.1,
+          spriteKey: `cloud${Math.ceil(Math.random()*3)}`
         });
       }
     }
@@ -164,9 +206,28 @@ const GameCanvas: React.FC = () => {
   useEffect(() => {
     const sprite = new Image();
     sprite.src = "/Graphics/Graphics/Spritesheet/sprites.png";
-    sprite.onload = () => {
-        spritesheetRef.current = sprite;
-    };
+    sprite.onload = () => spritesheetRef.current = sprite;
+
+    const bg1 = new Image();
+    bg1.src = "/Graphics/Graphics/backgrounds/colored_grass.png";
+    const bg2 = new Image();
+    bg2.src = "/Graphics/Graphics/backgrounds/colored_hills.png";
+    const bg3 = new Image();
+    bg3.src = "/Graphics/Graphics/backgrounds/colored_mountains.png";
+
+    const loadPromise = Promise.all([
+        new Promise(res => bg1.onload = res),
+        new Promise(res => bg2.onload = res),
+        new Promise(res => bg3.onload = res),
+    ]);
+
+    loadPromise.then(() => {
+        backgroundsRef.current = [
+            { img: bg3, x: 0, speed: 0.1 },
+            { img: bg2, x: 0, speed: 0.2 },
+            { img: bg1, x: 0, speed: 0.4 },
+        ]
+    });
   }, []);
 
   const handlePlayerAction = useCallback(() => {
@@ -176,39 +237,41 @@ const GameCanvas: React.FC = () => {
         player.vy = JUMP_POWER;
         player.onGround = false;
         player.isJumping = true;
+        player.animState = 'jump';
+        player.animFrame = 0;
       }
     } else {
       startGame();
     }
   }, [gameState, startGame]);
-
+  
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.key === ' ' || e.key.toLowerCase() === 'enter' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
+    keysPressed.current[e.key.toLowerCase()] = true;
+    if ((e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
         e.preventDefault();
         handlePlayerAction();
     }
-    keysPressed.current[e.key.toLowerCase()] = true;
   }, [handlePlayerAction]);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
     keysPressed.current[e.key.toLowerCase()] = false;
-    if ((e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
-        if(playerRef.current) {
-            playerRef.current.isJumping = false;
-        }
-    }
-  }, []);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    handlePlayerAction();
-  }, [handlePlayerAction]);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    if(playerRef.current) {
+    if(playerRef.current && playerRef.current.isJumping && !(e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
+      // Allow jump to end even if other keys are released
+    } else if(playerRef.current) {
         playerRef.current.isJumping = false;
     }
+  }, []);
+  
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+      e.preventDefault();
+      handlePlayerAction();
+  }, [handlePlayerAction]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+      e.preventDefault();
+      if(playerRef.current) {
+          playerRef.current.isJumping = false;
+      }
   }, []);
 
   useEffect(() => {
@@ -227,17 +290,19 @@ const GameCanvas: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    canvas.addEventListener('touchstart', handleTouchStart as unknown as EventListener);
-    canvas.addEventListener('touchend', handleTouchEnd as unknown as EventListener);
+    canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.addEventListener('touchend', handleTouchEnd);
 
     const update = () => {
         if (gameState !== 'playing') return;
         const player = playerRef.current;
         const canvas = canvasRef.current;
         if (!canvas) return;
+        
+        frameCount.current++;
 
         worldX.current += gameSpeed.current;
-        gameSpeed.current = Math.min(5, gameSpeed.current + 0.001);
+        gameSpeed.current = Math.min(6, gameSpeed.current + 0.001);
 
         player.vx = 0;
         if (keysPressed.current['a'] || keysPressed.current['arrowleft']) {
@@ -257,32 +322,52 @@ const GameCanvas: React.FC = () => {
             if (
                 player.x < platX + platform.width &&
                 player.x + player.width > platX &&
-                player.y + player.height > platform.y &&
-                player.y + player.height < platform.y + 20 + player.vy
+                player.y + player.height >= platform.y &&
+                player.y + player.height <= platform.y + 20 + player.vy
             ) {
-                player.vy = 0;
-                player.y = platform.y - player.height;
-                player.onGround = true;
+                if (player.vy > 0) {
+                    player.vy = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
+                    if(player.animState === 'jump') player.animState = 'idle';
+                }
             }
         });
         
-        const newCoins = coinsRef.current.filter(coin => {
+        coinsRef.current = coinsRef.current.filter(coin => {
             const coinX = coin.x - worldX.current;
-            const dx = coinX - (player.x + player.width / 2);
-            const dy = coin.y - (player.y + player.height / 2);
-            if (Math.sqrt(dx*dx + dy*dy) < coin.size + player.width / 2) {
+            const dx = coinX + coin.width / 2 - (player.x + player.width / 2);
+            const dy = coin.y + coin.height / 2 - (player.y + player.height / 2);
+            if (Math.sqrt(dx*dx + dy*dy) < coin.width / 2 + player.width / 2) {
                 setScore(prev => prev + 10);
                 return false; 
             }
             return true;
         });
-        coinsRef.current = newCoins;
 
+        // Player animation
+        if(player.onGround){
+            if(player.vx !== 0){
+                player.animState = 'run';
+                 if(frameCount.current % 8 === 0) {
+                    player.animFrame = (player.animFrame + 1) % 2;
+                }
+            } else {
+                player.animState = 'idle';
+            }
+        } else {
+             player.animState = 'jump';
+        }
+        
+        // Coin animation
+        if(frameCount.current % 10 === 0) {
+            coinsRef.current.forEach(c => c.animFrame = (c.animFrame + 1) % 4);
+        }
 
         if(player.x < 0) player.x = 0;
         if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
         
-        if(player.y > canvas.height + 100) {
+        if(player.y > canvas.height + 150) {
             setGameState('over');
         }
 
@@ -291,86 +376,69 @@ const GameCanvas: React.FC = () => {
         }
 
         platformsRef.current = platformsRef.current.filter(p => p.x + p.width - worldX.current > -50);
-        coinsRef.current = coinsRef.current.filter(c => c.x + c.size - worldX.current > -50);
+        coinsRef.current = coinsRef.current.filter(c => c.x + c.width - worldX.current > -50);
     }
     
     const draw = () => {
-        if (!canvasRef.current || !ctx) return;
+        if (!canvasRef.current || !ctx || !spritesheetRef.current) return;
         const player = playerRef.current;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       
         ctx.fillStyle = '#639BFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw background mountains
-        ctx.fillStyle = '#a0a0b0';
-        ctx.beginPath();
-        ctx.moveTo(0, canvas.height);
-        for(let i = 0; i < canvas.width * 2; i+= 50) {
-          const x = i - (worldX.current * 0.1) % (canvas.width * 2);
-          const y = canvas.height - 150 - Math.sin(i * 0.01) * 50;
-          ctx.lineTo(x, y);
-        }
-        ctx.lineTo(canvas.width, canvas.height);
-        ctx.fill();
+        // Draw parallax background
+        backgroundsRef.current.forEach(bg => {
+            let x = -(worldX.current * bg.speed % bg.img.width);
+            ctx.drawImage(bg.img, x, canvas.height - bg.img.height);
+            ctx.drawImage(bg.img, x + bg.img.width, canvas.height - bg.img.height);
+        });
 
         // Draw clouds
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         cloudsRef.current.forEach(cloud => {
           cloud.x -= cloud.speed;
-          if (cloud.x + cloud.size * 2 < 0) {
-            cloud.x = canvas.width + cloud.size;
+          if (cloud.x + cloud.width < 0) {
+            cloud.x = canvas.width + Math.random() * 200;
+            cloud.y = Math.random() * (canvas.height / 2.5);
           }
-          ctx.beginPath();
-          ctx.ellipse(cloud.x, cloud.y, cloud.size, cloud.size * 0.6, 0, 0, Math.PI * 2);
-          ctx.fill();
+          const sprite = SPRITES[cloud.spriteKey];
+          if(sprite) {
+            ctx.drawImage(spritesheetRef.current!, sprite.x, sprite.y, sprite.width, sprite.height, cloud.x, cloud.y, sprite.width, sprite.height);
+          }
         });
         
         // Draw platforms
         platformsRef.current.forEach(p => {
             const platX = p.x - worldX.current;
-            const grad = ctx.createLinearGradient(platX, p.y, platX, p.y + p.height);
-            grad.addColorStop(0, '#6A8A3B');
-            grad.addColorStop(1, '#4A2E20');
-
-            ctx.fillStyle = grad;
-            ctx.fillRect(platX, p.y, p.width, p.height);
-
-            ctx.fillStyle = '#5A7A2B';
-            ctx.fillRect(platX, p.y, p.width, 10);
+            const spriteKey = `grass_${p.type}`;
+            const sprite = SPRITES[spriteKey];
+            if (sprite) {
+                ctx.drawImage(spritesheetRef.current!, sprite.x, sprite.y, sprite.width, sprite.height, platX, p.y, TILE_SIZE, TILE_SIZE);
+            }
         });
       
         // Draw coins
-        ctx.fillStyle = '#FFD700';
-        ctx.strokeStyle = '#DAA520';
-        ctx.lineWidth = 3;
         coinsRef.current.forEach(c => {
             const coinX = c.x - worldX.current;
-            ctx.beginPath();
-            ctx.arc(coinX, c.y, c.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.font = 'bold 12px "Space Grotesk"';
-            ctx.fillStyle = '#DAA520';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('$', coinX, c.y + 1);
+            const sprite = SPRITES[`coin_${c.animFrame + 1}`];
+            if(sprite) {
+              ctx.drawImage(spritesheetRef.current!, sprite.x, sprite.y, sprite.width, sprite.height, coinX, c.y, c.width, c.height);
+            }
         });
       
         // Draw player
-        if ((gameState === 'playing' || gameState === 'over') && spritesheetRef.current) {
-            const sprite = playerSpriteInfo.current;
-            ctx.drawImage(
-                spritesheetRef.current,
-                sprite.x,
-                sprite.y,
-                sprite.width,
-                sprite.height,
-                player.x,
-                player.y,
-                player.width,
-                player.height
-            );
+        if (gameState === 'playing' || gameState === 'over') {
+            let sprite;
+            if(player.animState === 'idle') {
+                sprite = SPRITES.player_stand;
+            } else if(player.animState === 'jump') {
+                sprite = SPRITES.player_jump;
+            } else { // run
+                sprite = SPRITES[`player_walk${player.animFrame + 1}`];
+            }
+            if(sprite){
+                 ctx.drawImage(spritesheetRef.current, sprite.x, sprite.y, sprite.width, sprite.height, player.x, player.y, sprite.width, sprite.height);
+            }
         }
       
         // Draw score
@@ -418,16 +486,18 @@ const GameCanvas: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       if(canvas) {
-        canvas.removeEventListener('touchstart', handleTouchStart as unknown as EventListener);
-        canvas.removeEventListener('touchend', handleTouchEnd as unknown as EventListener);
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchend', handleTouchEnd);
       }
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameState, score, startGame, generateNewPlatform, handleKeyDown, handleKeyUp, handleTouchStart, handleTouchEnd]);
+  }, [gameState, score, startGame, generateNewPlatform, handleKeyDown, handleKeyUp, handlePlayerAction, handleTouchEnd, handleTouchStart]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default GoblinGoldGrab;
+
+    
