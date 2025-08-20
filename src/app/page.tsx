@@ -19,6 +19,14 @@ const games = [
     image: "https://placehold.co/600x400.png",
     hint: "abstract puzzle"
   },
+  {
+    slug: "kart-havoc",
+    title: "Kart Havoc",
+    description: "A chaotic top-down racing game for 2 players.",
+    players: "2",
+    image: "https://placehold.co/600x400.png",
+    hint: "racing cars"
+  },
 ];
 
 export default function Home() {
