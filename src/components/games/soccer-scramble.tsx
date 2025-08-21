@@ -2,6 +2,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
+
 
 type Body = {
   id: string;
@@ -15,6 +17,13 @@ type Body = {
   friction: number;
   mass: number;
 };
+
+type TouchState = {
+  moving: boolean;
+  jumping: boolean;
+  x: number;
+  y: number;
+}
 
 const SoccerScramble: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -47,13 +56,17 @@ const GameCanvas: React.FC = () => {
   const player2Ref = useRef<Body>({ id: 'p2', x: 0, y: 0, width: 50, height: 50, vx: 0, vy: 0, color: '#DB4437', friction: 0.9, mass: 10 });
   const ballRef = useRef<Body>({ id: 'ball', x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98, mass: 1 });
   
+  const isMobile = useIsMobile();
+  const touchStateP1 = useRef<TouchState>({ moving: false, jumping: false, x: 0, y: 0 });
+  const touchStateP2 = useRef<TouchState>({ moving: false, jumping: false, x: 0, y: 0 });
+
   const gameLoopId = useRef<number>();
-  const countdownTimer = useRef<number>(0);
+  const countdownTimer = useRef<number>(3);
 
 
   const GRAVITY = 0.5;
-  const JUMP_POWER = -15;
-  const MOVE_SPEED = 0.8;
+  const JUMP_POWER = -17;
+  const MOVE_SPEED = 1.0;
   const MAX_SPEED = 15;
 
   const resetPositions = useCallback((canvas: HTMLCanvasElement) => {
@@ -117,7 +130,6 @@ const GameCanvas: React.FC = () => {
     if (!ctx) return;
     
     let lastTime = 0;
-    let frameCount = 0;
 
     const handleResize = () => {
         canvas.width = window.innerWidth;
@@ -147,10 +159,50 @@ const GameCanvas: React.FC = () => {
       keysPressed.current[e.key.toLowerCase()] = false;
     };
     
+    const handleTouchEvent = (e: TouchEvent) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        touchStateP1.current = { moving: false, jumping: false, x: 0, y: 0 };
+        touchStateP2.current = { moving: false, jumping: false, x: 0, y: 0 };
+
+        for (let i = 0; i < e.touches.length; i++) {
+            const touch = e.touches[i];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            // Player 1 controls (left half)
+            if (x < canvas.width / 2) {
+                if (y < canvas.height / 2) { // Top half for jump
+                    touchStateP1.current.jumping = true;
+                } else { // Bottom half for move
+                    touchStateP1.current.moving = true;
+                    if(x < canvas.width / 4) touchStateP1.current.x = -1; // Move left
+                    else touchStateP1.current.x = 1; // Move right
+                }
+            } 
+            // Player 2 controls (right half)
+            else {
+                 if (y < canvas.height / 2) { // Top half for jump
+                    touchStateP2.current.jumping = true;
+                } else { // Bottom half for move
+                    touchStateP2.current.moving = true;
+                    if(x < (canvas.width / 4) * 3) touchStateP2.current.x = -1; // Move left
+                    else touchStateP2.current.x = 1; // Move right
+                }
+            }
+        }
+    }
+    
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     canvas.addEventListener('mousedown', handleStartAction);
     canvas.addEventListener('touchstart', handleStartAction);
+
+    if (isMobile) {
+        canvas.addEventListener('touchstart', handleTouchEvent);
+        canvas.addEventListener('touchmove', handleTouchEvent);
+        canvas.addEventListener('touchend', handleTouchEvent);
+    }
 
 
     const update = () => {
@@ -163,17 +215,27 @@ const GameCanvas: React.FC = () => {
       const player2 = player2Ref.current;
 
       // Player 1 controls
-      if (keysPressed.current['a']) player1.vx -= MOVE_SPEED;
-      if (keysPressed.current['d']) player1.vx += MOVE_SPEED;
-      if (keysPressed.current['w'] && player1.y + player1.height >= canvas.height - 1) {
-        player1.vy = JUMP_POWER;
+      if (isMobile) {
+          if (touchStateP1.current.moving) player1.vx += MOVE_SPEED * touchStateP1.current.x;
+          if (touchStateP1.current.jumping && player1.y + player1.height >= canvas.height - 1) player1.vy = JUMP_POWER;
+      } else {
+          if (keysPressed.current['a']) player1.vx -= MOVE_SPEED;
+          if (keysPressed.current['d']) player1.vx += MOVE_SPEED;
+          if (keysPressed.current['w'] && player1.y + player1.height >= canvas.height - 1) {
+            player1.vy = JUMP_POWER;
+          }
       }
       
       // Player 2 controls
-      if (keysPressed.current['arrowleft']) player2.vx -= MOVE_SPEED;
-      if (keysPressed.current['arrowright']) player2.vx += MOVE_SPEED;
-      if (keysPressed.current['arrowup'] && player2.y + player2.height >= canvas.height - 1) {
-        player2.vy = JUMP_POWER;
+      if(isMobile) {
+          if (touchStateP2.current.moving) player2.vx += MOVE_SPEED * touchStateP2.current.x;
+          if (touchStateP2.current.jumping && player2.y + player2.height >= canvas.height - 1) player2.vy = JUMP_POWER;
+      } else {
+          if (keysPressed.current['arrowleft']) player2.vx -= MOVE_SPEED;
+          if (keysPressed.current['arrowright']) player2.vx += MOVE_SPEED;
+          if (keysPressed.current['arrowup'] && player2.y + player2.height >= canvas.height - 1) {
+            player2.vy = JUMP_POWER;
+          }
       }
 
       entities.forEach(body => {
@@ -255,10 +317,10 @@ const GameCanvas: React.FC = () => {
 
                 if (speed < 0) {
                     const impulse = 2 * speed / totalMass;
-                    body1.vx -= impulse * body2.mass * normalX * 1.2; // Add a bit of extra "kick"
-                    body1.vy -= impulse * body2.mass * normalY * 1.2;
-                    body2.vx += impulse * body1.mass * normalX * 1.2;
-                    body2.vy += impulse * body1.mass * normalY * 1.2;
+                    body1.vx -= impulse * body2.mass * normalX * 1.5; // Add a bit of extra "kick"
+                    body1.vy -= impulse * body2.mass * normalY * 1.5;
+                    body2.vx += impulse * body1.mass * normalX * 1.5;
+                    body2.vy += impulse * body1.mass * normalY * 1.5;
                 }
             }
         }
@@ -383,14 +445,20 @@ const GameCanvas: React.FC = () => {
             ctx.font = 'bold 60px "Space Grotesk", sans-serif';
             ctx.shadowColor = 'black';
             ctx.shadowBlur = 10;
-            const winner = scores.player1 > scores.player2 ? "Blue Player Wins!" : "Red Player Wins!";
-            ctx.fillText(gameState === 'over' ? winner : "Soccer Scramble", canvas.width / 2, canvas.height / 2 - 80);
+            const winner = scores.player1 >= 3 ? "Blue Player Wins!" : (scores.player2 >=3 ? "Red Player Wins!" : "Soccer Scramble");
+            const titleText = gameState === 'over' ? winner : "Soccer Scramble"
+            ctx.fillText(titleText, canvas.width / 2, canvas.height / 2 - 80);
             
             ctx.font = '30px "Space Grotesk", sans-serif';
             if (gameState === 'over') {
                  ctx.fillText("Click or Tap to Play Again", canvas.width / 2, canvas.height / 2 + 50);
             } else {
                  ctx.fillText("Click or Tap to Play", canvas.width / 2, canvas.height / 2);
+                 if (isMobile) {
+                    ctx.font = '20px "Space Grotesk", sans-serif';
+                    ctx.fillText("P1: Left Side | P2: Right Side", canvas.width / 2, canvas.height / 2 + 60);
+                    ctx.fillText("Tap Top to Jump, Bottom to Move", canvas.width / 2, canvas.height / 2 + 90);
+                 }
             }
             ctx.shadowBlur = 0;
         } else if (countdown > 0) {
@@ -409,6 +477,7 @@ const GameCanvas: React.FC = () => {
         gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
+    if (gameLoopId.current) cancelAnimationFrame(gameLoopId.current);
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
@@ -417,15 +486,22 @@ const GameCanvas: React.FC = () => {
       if(canvas) {
         canvas.removeEventListener('mousedown', handleStartAction);
         canvas.removeEventListener('touchstart', handleStartAction);
+        if (isMobile) {
+            canvas.removeEventListener('touchstart', handleTouchEvent);
+            canvas.removeEventListener('touchmove', handleTouchEvent);
+            canvas.removeEventListener('touchend', handleTouchEvent);
+        }
       }
 
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameState, scores, lastGoal, handleGoal, resetPositions, startGame, countdown]);
+  }, [gameState, scores, lastGoal, handleGoal, resetPositions, startGame, countdown, isMobile]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full cursor-pointer" />;
 };
 
 export default SoccerScramble;
+
+    
