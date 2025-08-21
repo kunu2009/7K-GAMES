@@ -28,6 +28,14 @@ type Waypoint = {
   x: number, y: number
 }
 
+type TouchControls = {
+  active: boolean;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
 const KART_WIDTH = 20;
 const KART_HEIGHT = 40;
 const TOTAL_LAPS = 3;
@@ -61,6 +69,7 @@ const GameCanvas: React.FC = () => {
   const finishLineRef = useRef<TrackSegment | null>(null);
   
   const isMobile = useIsMobile();
+  const touchControlsRef = useRef<TouchControls>({ active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
 
   const player1Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 });
   const player2Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 });
@@ -93,6 +102,10 @@ const GameCanvas: React.FC = () => {
   const startGame = useCallback(() => {
     setWinner(null);
     resetKarts();
+    player1Ref.current.laps = 0;
+    player1Ref.current.lastCheckpoint = 0;
+    player2Ref.current.laps = 0;
+    player2Ref.current.lastCheckpoint = 0;
     setGameState('countdown');
     setCountdown(3);
   }, [resetKarts]);
@@ -102,7 +115,8 @@ const GameCanvas: React.FC = () => {
         countdownIntervalId.current = setInterval(() => {
             setCountdown(prev => prev - 1);
         }, 1000);
-    } else if (gameState === 'countdown' && countdown === 0) {
+    } else if (gameState === 'countdown' && countdown <= 0) {
+        if(countdownIntervalId.current) clearInterval(countdownIntervalId.current);
         setGameState('playing');
     }
     return () => {
@@ -148,7 +162,7 @@ const GameCanvas: React.FC = () => {
         const innerRectH = canvas.height * 0.4;
 
         // Outer boundary
-        path.rect(0, 0, canvas.width, canvas.height);
+        path.rect(canvas.width * 0.1, canvas.height * 0.1, canvas.width * 0.8, canvas.height * 0.8);
         // Inner boundary (creates the hole)
         path.rect(innerRectX, innerRectY, innerRectW, innerRectH);
         
@@ -242,17 +256,27 @@ const GameCanvas: React.FC = () => {
       p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' },
     };
     
-    // Update P1 (Human)
-    const p1 = player1Ref.current;
+    // --- Update Controls ---
     let p1Acceleration = 0;
     let p1Turn = 0;
-    if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.25;
-    if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
-    if (keysPressed.current[controls.p1.left]) p1Turn = -0.035;
-    if (keysPressed.current[controls.p1.right]) p1Turn = 0.035;
+    if (isMobile) {
+        const touch = touchControlsRef.current;
+        if(touch.active) {
+            const dx = touch.currentX - touch.startX;
+            const dy = touch.currentY - touch.startY;
+            p1Acceleration = -dy / 50;
+            p1Turn = dx / 1500;
+        }
+    } else {
+        if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.25;
+        if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
+        if (keysPressed.current[controls.p1.left]) p1Turn = -0.04;
+        if (keysPressed.current[controls.p1.right]) p1Turn = 0.04;
+    }
 
+    const p1 = player1Ref.current;
     p1.speed += p1Acceleration;
-    p1.speed *= 0.985; // Friction
+    p1.speed *= 0.98; // Increased friction
     p1.speed = Math.max(-3, Math.min(6, p1.speed));
     if (Math.abs(p1.speed) > 0.1) {
         p1.angle += p1Turn * (p1.speed / 5);
@@ -267,11 +291,11 @@ const GameCanvas: React.FC = () => {
         let p2Turn = 0;
         if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.25;
         if (keysPressed.current[controls.p2.down]) p2Acceleration = -0.2;
-        if (keysPressed.current[controls.p2.left]) p2Turn = -0.035;
-        if (keysPressed.current[controls.p2.right]) p2Turn = 0.035;
+        if (keysPressed.current[controls.p2.left]) p2Turn = -0.04;
+        if (keysPressed.current[controls.p2.right]) p2Turn = 0.04;
 
         p2.speed += p2Acceleration;
-        p2.speed *= 0.985;
+        p2.speed *= 0.98;
         p2.speed = Math.max(-3, Math.min(6, p2.speed));
         if (Math.abs(p2.speed) > 0.1) {
             p2.angle += p2Turn * (p2.speed / 5);
@@ -284,31 +308,29 @@ const GameCanvas: React.FC = () => {
         kart.y -= Math.cos(kart.angle) * kart.speed;
 
         // --- Physics & Rules ---
-        // Collision with track walls
         let onTrack = false;
         
         const ctx = canvas.getContext('2d');
         if(ctx && trackPathRef.current) {
-          onTrack = ctx.isPointInPath(trackPathRef.current, kart.x, kart.y, 'evenodd');
+          const innerRectX = canvas.width * 0.3;
+          const innerRectY = canvas.height * 0.3;
+          const innerRectW = canvas.width * 0.4;
+          const innerRectH = canvas.height * 0.4;
+          const outerRectX = canvas.width * 0.1;
+          const outerRectY = canvas.height * 0.1;
+          const outerRectW = canvas.width * 0.8;
+          const outerRectH = canvas.height * 0.8;
+
+          const isInInner = kart.x > innerRectX && kart.x < innerRectX + innerRectW && kart.y > innerRectY && kart.y < innerRectY + innerRectH;
+          const isInOuter = kart.x > outerRectX && kart.x < outerRectX + outerRectW && kart.y > outerRectY && kart.y < outerRectY + outerRectH;
+          onTrack = isInOuter && !isInInner;
         }
 
         if(!onTrack) {
           kart.speed *= 0.9;
-        }
-        
-        // Bounce off walls (Simplified)
-        const innerRectX = canvas.width * 0.3;
-        const innerRectY = canvas.height * 0.3;
-        const innerRectW = canvas.width * 0.4;
-        const innerRectH = canvas.height * 0.4;
-        
-        // Outer walls
-        if (kart.x < canvas.width * 0.1 || kart.x > canvas.width * 0.9 || kart.y < canvas.height * 0.1 || kart.y > canvas.height * 0.9) {
-             kart.speed *= -0.5;
-        }
-        // Inner walls
-        if (kart.x > innerRectX && kart.x < innerRectX + innerRectW && kart.y > innerRectY && kart.y < innerRectY + innerRectH) {
-            kart.speed *= -0.5;
+          kart.x -= Math.sin(kart.angle) * kart.speed;
+          kart.y += Math.cos(kart.angle) * kart.speed;
+          kart.speed *= -0.5; // Bounce effect
         }
 
         // Collision with other kart
@@ -347,7 +369,7 @@ const GameCanvas: React.FC = () => {
             }
         }
     });
-  }, [gameState, gameMode, updateAI]);
+  }, [gameState, gameMode, updateAI, isMobile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -369,28 +391,30 @@ const GameCanvas: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current[e.key.toLowerCase()] = true; };
     const handleKeyUp = (e: KeyboardEvent) => { keysPressed.current[e.key.toLowerCase()] = false; };
     
-    const handleTouchStart = (key: string) => { keysPressed.current[key] = true; };
-    const handleTouchEnd = (key: string) => { keysPressed.current[key] = false; };
+    const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        touchControlsRef.current = { active: true, startX: touch.clientX, startY: touch.clientY, currentX: touch.clientX, currentY: touch.clientY };
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        if(touchControlsRef.current.active) {
+            const touch = e.touches[0];
+            touchControlsRef.current.currentX = touch.clientX;
+            touchControlsRef.current.currentY = touch.clientY;
+        }
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        touchControlsRef.current.active = false;
+    };
     
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('touchstart', handleTouchStart);
+    canvas.addEventListener('touchmove', handleTouchMove);
+    canvas.addEventListener('touchend', handleTouchEnd);
     
-    const mobileControls = [
-        { key: 'w', id: 'p1-up' }, { key: 's', id: 'p1-down' }, { key: 'a', id: 'p1-left' }, { key: 'd', id: 'p1-right' },
-        { key: 'arrowup', id: 'p2-up' }, { key: 'arrowdown', id: 'p2-down' }, { key: 'arrowleft', id: 'p2-left' }, { key: 'arrowright', id: 'p2-right' },
-    ];
-    mobileControls.forEach(({key, id}) => {
-        const element = document.getElementById(id);
-        if(element) {
-            const startListener = () => handleTouchStart(key);
-            const endListener = () => handleTouchEnd(key);
-            element.addEventListener('touchstart', startListener);
-            element.addEventListener('touchend', endListener);
-            element.addEventListener('mousedown', startListener);
-            element.addEventListener('mouseup', endListener);
-            element.addEventListener('mouseleave', endListener);
-        }
-    })
 
     const loop = () => {
       const ctx = canvas.getContext('2d');
@@ -427,21 +451,13 @@ const GameCanvas: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
-       mobileControls.forEach(({key, id}) => {
-        const element = document.getElementById(id);
-        if(element) {
-            // Memory leak here, but acceptable for this prototype.
-            // In a real app, we'd store and remove these listeners.
-        }
-    })
+      if (canvas) {
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchend', handleTouchEnd);
+      }
     };
   }, [resetKarts, isMobile, update, gameMode]);
-
-  const TouchButton = ({id, children, className}: {id: string, children: React.ReactNode, className?: string}) => (
-    <Button id={id} size="icon" variant="secondary" className={cn("w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40", className)}>
-        {children}
-    </Button>
-  )
 
   const renderUI = () => {
     if (gameState !== 'playing' && gameState !== 'countdown') {
@@ -490,33 +506,9 @@ const GameCanvas: React.FC = () => {
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center">
-      <div className="relative w-[95vw] h-[70vh] md:w-[90vw] md:h-[80vh]">
-        <canvas ref={canvasRef} className="w-full h-full rounded-lg shadow-2xl" />
+      <div className="relative w-full h-full">
+        <canvas ref={canvasRef} className="w-full h-full" />
         {renderUI()}
-        {isMobile && gameState === 'playing' && (
-            <div className="absolute bottom-4 w-full flex justify-between px-4 pointer-events-auto">
-                {/* Player 1 Controls */}
-                <div className="flex items-center gap-2">
-                    <TouchButton id="p1-left"><ChevronLeft /></TouchButton>
-                    <div className="flex flex-col gap-2">
-                        <TouchButton id="p1-up" className="w-12 h-12"><ArrowUp/></TouchButton>
-                        <TouchButton id="p1-down" className="w-12 h-12"><ArrowDown/></TouchButton>
-                    </div>
-                    <TouchButton id="p1-right"><ChevronRight /></TouchButton>
-                </div>
-                {/* Player 2 Controls (only in 2P mode on mobile) */}
-                {gameMode === '2p' && (
-                  <div className="flex items-center gap-2">
-                      <TouchButton id="p2-left"><ChevronLeft /></TouchButton>
-                      <div className="flex flex-col gap-2">
-                          <TouchButton id="p2-up" className="w-12 h-12"><ArrowUp/></TouchButton>
-                          <TouchButton id="p2-down" className="w-12 h-12"><ArrowDown/></TouchButton>
-                      </div>
-                      <TouchButton id="p2-right"><ChevronRight /></TouchButton>
-                  </div>
-                )}
-            </div>
-        )}
       </div>
     </div>
   )

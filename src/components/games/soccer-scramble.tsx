@@ -48,7 +48,7 @@ const GameCanvas: React.FC = () => {
   const ballRef = useRef<Body>({ id: 'ball', x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98, mass: 1 });
   
   const gameLoopId = useRef<number>();
-  const countdownIntervalRef = useRef<NodeJS.Timeout>();
+  const countdownTimer = useRef<number>(0);
 
 
   const GRAVITY = 0.5;
@@ -57,30 +57,23 @@ const GameCanvas: React.FC = () => {
   const MAX_SPEED = 15;
 
   const resetPositions = useCallback((canvas: HTMLCanvasElement) => {
-    player1Ref.current = { ...player1Ref.current, x: canvas.width / 4, y: canvas.height - 100, vx: 0, vy: 0 };
-    player2Ref.current = { ...player2Ref.current, x: (canvas.width / 4) * 3, y: canvas.height - 100, vx: 0, vy: 0 };
-    ballRef.current = { ...ballRef.current, x: canvas.width / 2 - 15, y: canvas.height / 2, vx: 0, vy: 0 };
-  }, []);
-
-  const startCountdown = useCallback(() => {
-    setCountdown(3);
-    if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-    }
-    countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => {
-            if (prev - 1 <= 0) {
-                clearInterval(countdownIntervalRef.current);
-            }
-            return prev - 1;
-        });
-    }, 1000);
+    player1Ref.current.x = canvas.width / 4;
+    player1Ref.current.y = canvas.height - 100;
+    player1Ref.current.vx = 0;
+    player1Ref.current.vy = 0;
+    
+    player2Ref.current.x = (canvas.width / 4) * 3;
+    player2Ref.current.y = canvas.height - 100;
+    player2Ref.current.vx = 0;
+    player2Ref.current.vy = 0;
+    
+    ballRef.current.x = canvas.width / 2 - 15;
+    ballRef.current.y = canvas.height / 2;
+    ballRef.current.vx = 0;
+    ballRef.current.vy = 0;
   }, []);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
-    const canvas = canvasRef.current;
-    if(!canvas) return;
-    
     setScores(prevScores => {
         const newScores = { ...prevScores };
         if (scoringPlayer === 'player1') {
@@ -91,16 +84,19 @@ const GameCanvas: React.FC = () => {
 
         if (newScores.player1 >= 3 || newScores.player2 >= 3) {
             setGameState('over');
+        } else {
+            const canvas = canvasRef.current;
+            if (canvas) resetPositions(canvas);
+            setCountdown(3);
+            countdownTimer.current = 3;
         }
         return newScores;
     });
 
     setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
-    resetPositions(canvas);
-    startCountdown();
     setTimeout(() => setLastGoal(null), 2000);
 
-  }, [resetPositions, startCountdown]);
+  }, [resetPositions]);
   
   const startGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -110,8 +106,9 @@ const GameCanvas: React.FC = () => {
     setLastGoal(null);
     setGameState('playing');
     resetPositions(canvas);
-    startCountdown();
-  }, [resetPositions, startCountdown]);
+    setCountdown(3);
+    countdownTimer.current = 3;
+  }, [resetPositions]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -119,6 +116,9 @@ const GameCanvas: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
+    let lastTime = 0;
+    let frameCount = 0;
+
     const handleResize = () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -154,7 +154,7 @@ const GameCanvas: React.FC = () => {
 
 
     const update = () => {
-      if (gameState !== 'playing' || countdown > 0) {
+      if (gameState !== 'playing' || countdownTimer.current > 0) {
         return;
       }
       
@@ -190,7 +190,6 @@ const GameCanvas: React.FC = () => {
         
         // Friction
         body.vx *= body.friction;
-        body.vy *= body.friction;
         
         // Clamp speed
         body.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, body.vx));
@@ -256,10 +255,10 @@ const GameCanvas: React.FC = () => {
 
                 if (speed < 0) {
                     const impulse = 2 * speed / totalMass;
-                    body1.vx -= impulse * body2.mass * normalX * 1.1; // Add a bit of extra "kick"
-                    body1.vy -= impulse * body2.mass * normalY * 1.1;
-                    body2.vx += impulse * body1.mass * normalX * 1.1;
-                    body2.vy += impulse * body1.mass * normalY * 1.1;
+                    body1.vx -= impulse * body2.mass * normalX * 1.2; // Add a bit of extra "kick"
+                    body1.vy -= impulse * body2.mass * normalY * 1.2;
+                    body2.vx += impulse * body1.mass * normalX * 1.2;
+                    body2.vy += impulse * body1.mass * normalY * 1.2;
                 }
             }
         }
@@ -321,9 +320,18 @@ const GameCanvas: React.FC = () => {
         ctx.restore();
     }
 
-
-    const draw = () => {
+    const draw = (timestamp: number) => {
         if (!canvasRef.current || !ctx) return;
+        
+        const deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+
+        if (gameState === 'playing' && countdownTimer.current > 0) {
+            countdownTimer.current -= deltaTime / 1000;
+            if (countdownTimer.current < 0) countdownTimer.current = 0;
+            setCountdown(Math.ceil(countdownTimer.current));
+        }
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       
         // Draw pitch
@@ -394,9 +402,10 @@ const GameCanvas: React.FC = () => {
         }
     }
 
-    const gameLoop = () => {
+    const gameLoop = (timestamp: number) => {
+        if (!lastTime) lastTime = timestamp;
         update();
-        draw();
+        draw(timestamp);
         gameLoopId.current = requestAnimationFrame(gameLoop);
     };
     
@@ -413,15 +422,10 @@ const GameCanvas: React.FC = () => {
       if (gameLoopId.current) {
         cancelAnimationFrame(gameLoopId.current);
       }
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
     };
-  }, [gameState, scores, countdown, lastGoal, handleGoal, resetPositions, startGame]);
+  }, [gameState, scores, lastGoal, handleGoal, resetPositions, startGame, countdown]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full cursor-pointer" />;
 };
 
 export default SoccerScramble;
-
-    

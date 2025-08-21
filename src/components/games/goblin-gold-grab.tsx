@@ -83,7 +83,6 @@ const GoblinGoldGrab: React.FC = () => {
 
 const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const keysPressed = useRef<{ [key: string]: boolean }>({});
   
   const [gameState, setGameState] = useState<'waiting' | 'playing' | 'over'>('waiting');
   const [score, setScore] = useState(0);
@@ -104,7 +103,6 @@ const GameCanvas: React.FC = () => {
 
   const GRAVITY = 0.5;
   const JUMP_POWER = -12;
-  const PLAYER_SPEED = 5;
 
   const generateNewPlatform = useCallback(() => {
     const canvas = canvasRef.current;
@@ -202,11 +200,25 @@ const GameCanvas: React.FC = () => {
 
     setGameState('playing');
   }, [generateNewPlatform]);
+
+  const handlePlayerAction = useCallback(() => {
+    if (gameState === 'playing') {
+      const player = playerRef.current;
+      if (player.onGround && !player.isJumping) {
+        player.vy = JUMP_POWER;
+        player.onGround = false;
+        player.isJumping = true;
+        player.animState = 'jump';
+        player.animFrame = 0;
+      }
+    } else {
+      startGame();
+    }
+  }, [gameState, startGame]);
   
   useEffect(() => {
     const sprite = new Image();
     sprite.src = "/Graphics/Graphics/Spritesheet/sprites.png";
-    sprite.onload = () => spritesheetRef.current = sprite;
 
     const bg1 = new Image();
     bg1.src = "/Graphics/Graphics/backgrounds/colored_grass.png";
@@ -253,7 +265,6 @@ const GameCanvas: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
         e.preventDefault();
-        keysPressed.current[e.key.toLowerCase()] = true;
         if ((e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
             handlePlayerAction();
         }
@@ -261,10 +272,7 @@ const GameCanvas: React.FC = () => {
   
     const handleKeyUp = (e: KeyboardEvent) => {
       e.preventDefault();
-      keysPressed.current[e.key.toLowerCase()] = false;
-      if(playerRef.current && playerRef.current.isJumping && !(e.key === ' ' || e.key.toLowerCase() === 'arrowup' || e.key.toLowerCase() === 'w')) {
-        // Allow jump to end even if other keys are released
-      } else if(playerRef.current) {
+      if(playerRef.current) {
           playerRef.current.isJumping = false;
       }
     };
@@ -297,14 +305,7 @@ const GameCanvas: React.FC = () => {
         worldX.current += gameSpeed.current;
         gameSpeed.current = Math.min(6, gameSpeed.current + 0.001);
 
-        player.vx = 0;
-        if (keysPressed.current['a'] || keysPressed.current['arrowleft']) {
-            player.vx = -PLAYER_SPEED;
-        }
-        if (keysPressed.current['d'] || keysPressed.current['arrowright']) {
-            player.vx = PLAYER_SPEED;
-        }
-        player.x += player.vx;
+        player.vx = 0; // Player runs automatically
         
         player.vy += GRAVITY;
         player.y += player.vy;
@@ -340,13 +341,9 @@ const GameCanvas: React.FC = () => {
 
         // Player animation
         if(player.onGround){
-            if(player.vx !== 0){
-                player.animState = 'run';
-                 if(frameCount.current % 8 === 0) {
-                    player.animFrame = (player.animFrame + 1) % 2;
-                }
-            } else {
-                player.animState = 'idle';
+            player.animState = 'run';
+             if(frameCount.current % 8 === 0) {
+                player.animFrame = (player.animFrame + 1) % 2;
             }
         } else {
              player.animState = 'jump';
@@ -357,8 +354,8 @@ const GameCanvas: React.FC = () => {
             coinsRef.current.forEach(c => c.animFrame = (c.animFrame + 1) % 4);
         }
 
-        if(player.x < 0) player.x = 0;
-        if(player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        if(player.x < 150) player.x = 150; // Keep player centered
+        if(player.x > 150) player.x = 150;
         
         if(player.y > canvas.height + 150) {
             setGameState('over');
@@ -376,7 +373,6 @@ const GameCanvas: React.FC = () => {
         const ctx = canvasRef.current?.getContext('2d');
         if (!canvasRef.current || !ctx || !spritesheetRef.current || backgroundsRef.current.length === 0) {
             ctx?.clearRect(0, 0, canvasRef.current?.width || 0, canvasRef.current?.height || 0);
-            ctx?.fillStyle__ = '#639BFF'; // A simple fallback color
             ctx?.fillRect(0, 0, canvasRef.current?.width || 0, canvasRef.current?.height || 0);
             return;
         }
@@ -429,9 +425,7 @@ const GameCanvas: React.FC = () => {
         // Draw player
         if (gameState === 'playing' || gameState === 'over') {
             let sprite;
-            if(player.animState === 'idle') {
-                sprite = SPRITES.player_stand;
-            } else if(player.animState === 'jump') {
+            if(player.animState === 'jump') {
                 sprite = SPRITES.player_jump;
             } else { // run
                 sprite = SPRITES[`player_walk${player.animFrame + 1}`];
@@ -485,24 +479,7 @@ const GameCanvas: React.FC = () => {
         cancelAnimationFrame(gameLoopId.current);
       }
     };
-  }, [gameState, score, startGame, generateNewPlatform]);
-
-
-  const handlePlayerAction = useCallback(() => {
-    if (gameState === 'playing') {
-      const player = playerRef.current;
-      if (player.onGround && !player.isJumping) {
-        player.vy = JUMP_POWER;
-        player.onGround = false;
-        player.isJumping = true;
-        player.animState = 'jump';
-        player.animFrame = 0;
-      }
-    } else {
-      startGame();
-    }
-  }, [gameState, startGame]);
-
+  }, [gameState, score, startGame, generateNewPlatform, handlePlayerAction]);
 
   return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };

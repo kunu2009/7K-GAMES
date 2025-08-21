@@ -46,6 +46,14 @@ type Asteroid = {
     radius: number;
 }
 
+// For mobile touch controls
+type TouchState = {
+    touching: boolean;
+    x: number;
+    y: number;
+    isShooting: boolean;
+};
+
 const AstroClash: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
 
@@ -91,6 +99,10 @@ const GameCanvas: React.FC = () => {
   const shootSoundRef = useRef<HTMLAudioElement | null>(null);
   const explosionSoundRef = useRef<HTMLAudioElement | null>(null);
   const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  const touchStateP1 = useRef<TouchState>({ touching: false, x: 0, y: 0, isShooting: false });
+  const touchStateP2 = useRef<TouchState>({ touching: false, x: 0, y: 0, isShooting: false });
+
 
   const playSound = useCallback((soundRef: React.RefObject<HTMLAudioElement>) => {
     if (soundRef.current && !isMuted) {
@@ -281,8 +293,14 @@ const GameCanvas: React.FC = () => {
         if(gameState !== 'playing') return;
         const player = playerId === 1 ? player1Ref.current : player2Ref.current;
         if (!player || player.lives <= 0) return;
+
+        const timeoutRef = playerId === 1 ? shootTimeoutP1 : shootTimeoutP2;
+        if(timeoutRef.current) return;
+
         bullets.current.push({ x: player.x, y: player.y - 25, ownerId: playerId, vy: -10 });
         playSound(shootSoundRef);
+
+        timeoutRef.current = setTimeout(() => { timeoutRef.current = null; }, 200);
     }
 
     const gameLoop = () => {
@@ -300,12 +318,29 @@ const GameCanvas: React.FC = () => {
       }
       
       // Update player positions
-      if ((keysPressed.current['arrowleft'] || keysPressed.current['p1-left']) && player1Ref.current.x > 20) player1Ref.current.x -= 7;
-      if ((keysPressed.current['arrowright'] || keysPressed.current['p1-right']) && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
+      if (isMobile) {
+        if (touchStateP1.current.touching) {
+            const dx = touchStateP1.current.x - player1Ref.current.x;
+            if (Math.abs(dx) > 5) player1Ref.current.x += Math.sign(dx) * 7;
+        }
+        if (touchStateP1.current.isShooting) shoot(1);
 
-      if(player2Ref.current) {
-          if ((keysPressed.current['a'] || keysPressed.current['p2-left']) && player2Ref.current.x > 20) player2Ref.current.x -= 7;
-          if ((keysPressed.current['d'] || keysPressed.current['p2-right']) && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
+        if (player2Ref.current && touchStateP2.current.touching) {
+            const dx = touchStateP2.current.x - player2Ref.current.x;
+            if (Math.abs(dx) > 5) player2Ref.current.x += Math.sign(dx) * 7;
+        }
+        if (player2Ref.current && touchStateP2.current.isShooting) shoot(2);
+
+      } else { // Keyboard controls
+          if (keysPressed.current['a'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
+          if (keysPressed.current['d'] && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
+          if (keysPressed.current[' '] || keysPressed.current['w']) shoot(1);
+
+          if(player2Ref.current) {
+              if (keysPressed.current['arrowleft'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
+              if (keysPressed.current['arrowright'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
+              if (keysPressed.current['arrowup']) shoot(2);
+          }
       }
 
       // Update bullet positions
@@ -508,20 +543,15 @@ const GameCanvas: React.FC = () => {
         if (gameState !== 'playing') return;
         keysPressed.current[e.key.toLowerCase()] = true;
         
-        // P2 shoot is `shift`
-        if(e.key.toLowerCase() === 'shift' && gameMode === 'versus' && !shootTimeoutP2.current) {
+        // P1 shoot is `w` or space
+        if (e.key.toLowerCase() === ' ' || e.key.toLowerCase() === 'w') {
+             e.preventDefault();
+             shoot(1);
+        }
+         // P2 shoot is `arrowup`
+        if(e.key.toLowerCase() === 'arrowup' && gameMode === 'versus') {
              e.preventDefault();
              shoot(2);
-             shootTimeoutP2.current = setTimeout(() => { shootTimeoutP2.current = null; }, 200);
-        }
-
-        // P1 shoot is `space`
-        if (e.key === ' ' || e.key === 'Spacebar') {
-            e.preventDefault();
-            if (!shootTimeoutP1.current) {
-                shoot(1);
-                shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null; }, 200);
-            }
         }
     };
 
@@ -529,48 +559,46 @@ const GameCanvas: React.FC = () => {
         keysPressed.current[e.key.toLowerCase()] = false;
     };
     
-    const handleTouchStart = (key: string) => {
-      keysPressed.current[key] = true;
-      if (key === 'p1-fire') {
-        if (!shootTimeoutP1.current) {
-          shoot(1);
-          shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null }, 200);
-        }
-      }
-      if (key === 'p2-fire') {
-        if (!shootTimeoutP2.current) {
-          shoot(2);
-          shootTimeoutP2.current = setTimeout(() => { shootTimeoutP2.current = null }, 200);
-        }
-      }
-    };
+    const handleTouchEvent = (e: TouchEvent) => {
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        
+        touchStateP1.current = { touching: false, x: 0, y: 0, isShooting: false };
+        touchStateP2.current = { touching: false, x: 0, y: 0, isShooting: false };
 
-    const handleTouchEnd = (key: string) => {
-      keysPressed.current[key] = false;
-    };
+        for (let i = 0; i < e.touches.length; i++) {
+            const touch = e.touches[i];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
 
+            if (x < canvas.width / 2) { // Left side of screen for P1
+                touchStateP1.current.touching = true;
+                touchStateP1.current.x = x * 2; // Scale to full screen width for easier control
+                touchStateP1.current.y = y;
+                if (y < canvas.height / 2) {
+                    touchStateP1.current.isShooting = true;
+                }
+            } else { // Right side for P2
+                touchStateP2.current.touching = true;
+                touchStateP2.current.x = (x - canvas.width / 2) * 2;
+                touchStateP2.current.y = y;
+                 if (y < canvas.height / 2) {
+                    touchStateP2.current.isShooting = true;
+                }
+            }
+        }
+    };
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     
-    // Set up touch listeners for mobile
-    const mobileControls = [
-        { key: 'p1-left', id: 'p1-left' }, { key: 'p1-right', id: 'p1-right' }, { key: 'p1-fire', id: 'p1-fire' },
-        { key: 'p2-left', id: 'p2-left' }, { key: 'p2-right', id: 'p2-right' }, { key: 'p2-fire', id: 'p2-fire' },
-    ];
-    mobileControls.forEach(({key, id}) => {
-        const element = document.getElementById(id);
-        if(element) {
-            const startListener = (e: Event) => { e.preventDefault(); handleTouchStart(key); };
-            const endListener = (e: Event) => { e.preventDefault(); handleTouchEnd(key); };
-            element.addEventListener('touchstart', startListener);
-            element.addEventListener('touchend', endListener);
-            element.addEventListener('mousedown', startListener);
-            element.addEventListener('mouseup', endListener);
-            element.addEventListener('mouseleave', endListener);
-        }
-    });
+    // Touch listeners for mobile
+    canvas.addEventListener('touchstart', handleTouchEvent);
+    canvas.addEventListener('touchmove', handleTouchEvent);
+    canvas.addEventListener('touchend', handleTouchEvent);
 
     const enemyInterval = setInterval(spawnEnemy, 1200);
     const asteroidInterval = setInterval(spawnAsteroid, 2500);
@@ -586,14 +614,13 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
         clearInterval(asteroidInterval);
-         mobileControls.forEach(({id}) => {
-            const element = document.getElementById(id);
-            if(element) {
-                // In a real app, we'd store and remove these listeners.
-            }
-        })
+        if(canvas) {
+            canvas.removeEventListener('touchstart', handleTouchEvent);
+            canvas.removeEventListener('touchmove', handleTouchEvent);
+            canvas.removeEventListener('touchend', handleTouchEvent);
+        }
     };
-  }, [gameState, score, playSound, createExplosion, resetGame, gameMode]);
+  }, [gameState, score, playSound, createExplosion, resetGame, gameMode, isMobile]);
 
   const renderMenu = () => (
     <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
@@ -629,16 +656,10 @@ const GameCanvas: React.FC = () => {
     );
   }
   
-  const TouchButton = ({id, children, className}: {id: string, children: React.ReactNode, className?: string}) => (
-    <Button id={id} variant="ghost" size="icon" className={cn("w-20 h-20 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white", className)}>
-        {children}
-    </Button>
-  )
-
   return (
     <>
       <audio ref={shootSoundRef} src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAA//8/f/3/9v/e/6D/wf9g/13/MP8x/zT/Qf9r/2b/Uv9C/zb/Jv8j/yH/Gv8g/yY/LD/H/8f/q/+O/4X/b/9r/17/Yf9t/3r/hf+d/6n/vf/F/8P/uP+t/6D/mv+W/5L/kv+V/5r/oP+l/6j/q/+q/6j/p/+h/6D/n/+d/5r/mf+X/5T/lP+U/5X/mP+b/5//ov+p/6z/uf+9/8H/w/+9/7f/s/+u/6v/qf+m/6T/pP+n/6n/rP+x/7b/uv+8/7//wP/A/8D/v/+7/7n/t/+0/7L/r/+t/6//sP+z/7f/uv+8/8D/xP/G/8X/w//A/7//u/+5/7f/t/+0/7P/sv+x/7H/s/+1/7f/uf+7/7z/vf+9/73/vf+8/7r/uf+2/7P/r/+t/6v/qP+m/6T/pP+n/6k=" preload="auto"></audio>
-      <audio ref={explosionSoundRef} src="data:audio/wav;base64,UklGRiIAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQwAAAD8/vr+7f71/Pr88vz2/On85vzc/OD82vzV/NL8yvzC+7j5qPg79of0MvH/64frEuj/5O3mMeX/4pnhKeB/2xLaK9cr1S/NKcxsyPjE+sL6t/qg+IL4JfiU+Jr4nfiV+IL4bPhc+Gf4fPiI+Jb4mPim+KX4pPif+J74nvif+Jz4lviJ+IT4hPiD+ID4f/h++Hb4c/hy+G74a/hp+Gn4avht+G/4dPh5+Hz4fviB+If4jfiZ+K74s/i++MH4zvnV+f76gPudaJHUx+u86Mzh9+FW3uTYGtiZyPrC9Kz3mvys/bMAJQEzAS4BHwEaAQ0BCQELAQwBCwELAQwBDQEPAFcBWgGTAX4BjwGRAYoBfwF4AVsBSgE8ASQBDQDx/sX+vf6//qr+mv6U/pf+mv6n/rP+w/7X/uv++/8UAxIDJgMwAzIDNAMqAyYDJQMiAx4DGwMaAxkDGAN4/tr+z/7K/sn+w/6v/qT+n/6d/p3+oP6l/qz+tP7A/sr+2f7s/voA/wHDAdoB5AHoAesB6AHkAd8B1wHPAckBwwG5AbQBpAGZAT4A5v/V/9T/yf/F/8T/wv/C/8L/x//S/9n/4v/n/+z/9f/6AAMBBAEHAAwADwAOAA4ADQAJAAUAAQAEAAwADQAPABIAFgAWABQAEgAQAA0ACwALAA0ADwARABMAFQAXABkAGwAbABsAGgAYABQAEQAPAA4ADQAOAA8AEQATABYAGQAcAB4AIAAhAB8AHQAZABYAFAASABAADgANAA4AEAAQABAAEAAPAA0ACwAKAAoACgAKAAoACQAI" preload="auto"></audio>
+      <audio ref={explosionSoundRef} src="data:audio/wav;base64,UklGRiIAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQwAAAD8/vr+7f71/Pr88vz2/On85vzc/OD82vzV/NL8yvzC+7j5qPg79of0MvH/64frEuj/5O3mMeX/4pnhKeB/2xLaK9cr1S/NKcxsyPjE+sL6t/qg+IL4JfiU+Jr4nfiV+IL4bPhc+Gf4fPiI+Jb4mPim+KX4pPif+J74nvif+Jz4lviJ+IT4hPiD+ID4f/h++Hb4c/hy+G74a/hp+Gn4avht+G/4dPh5+Hz4fviB+If4jfiZ+K74s/i++MH4zvnV+f76gPudaJHUx+u86Mzh9+FW3uTYGtiZyPrC9Kz3mvys/bMAJQEzAS4BHwEaAQ0BCQELAQwBCwELAQwBDQEPAFcBWgGTAX4BjwGRAYoBfwF4AVsBSgE8ASQBDQDx/sX+vf6//qr+mv6U/pf+mv6n/rP+w/7X/uv++/8UAxIDJgMwAzIDNAMqAyYDJQMiAx4DGwMaAxkDGAN4/tr+z/7K/sn+w/6v/qT+n/p3+oP6l/qz+tP7A/sr+2f7s/voA/wHDAdoB5AHoAesB6AHkAd8B1wHPAckBwwG5AbQBpAGZAT4A5v/V/9T/yf/F/8T/wv/C/8L/x//S/9n/4v/n/+z/9f/6AAMBBAEHAAwADwAOAA4ADQAJAAUAAQAEAAwADQAPABIAFgAWABQAEgAQAA0ACwALAA0ADwARABMAFQAXABkAGwAbABsAGgAYABQAEQAPAA4ADQAOAA8AEQATABYAGQAcAB4AIAAhAB8AHQAZABYAFAASABAADgANAA4AEAAQABAAEAAPAA0ACwAKAAoACgAKAAoACQAI" preload="auto"></audio>
       <audio ref={gameOverSoundRef} src="data:audio/wav;base64,UklGRjoAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRoAAADD/sL+v/7G/sv+2/7l/v3//QEJAScBMQFEAV4BkgGdAagBsgHMAdEB2wHbAdQBzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOAc4BzgHOgc+B0IHUgdmB3IHiAeQB6QHqAesB6gHnAeIB2wHRAckBqgGeAR8A7/6r/pj+mf6c/p/+qP7D/uH/BQAfAC8ASQBeAGgAZQBcAEcANgAhABD/8/2M/pD+VPw4+zH6Q/pb+xL8Nf0z/fsBBAIiAyUDRgPl/ff91/2h/bb9z/4b/oX9uP0N/M78zPzO/M78xPzB+777sPuq+qD6k/i39171ovNb8sTzNfQz9Vb3hPoP/JL84f0N/gMCBQMAAP/+/er7zfuK+5f7mvuo+qb6l/mX+Iz4QPdE9U30P/O68ZXxbvFk8U3xQ/F38W3xevGA8ZrycvN39PX1i/eO+Rr8LQDm/tb+pP6J/nUAJgCJAaYB8wIOA0sB1wHoAfwB/AH5AekB0AGzAZQBQwDP/sL+u/6k/pz+o/6l/q/+uP7B/sn+0f7b/uL+8f76/v3//gACAAQABgAHAAYABQADAAEAAQABAAIAAQAAAAEAAAAA" preload="auto"></audio>
       
       <div className="absolute top-2 left-2 z-10">
@@ -649,28 +670,6 @@ const GameCanvas: React.FC = () => {
       
       <canvas ref={canvasRef} className="touch-none w-full h-full" />
       
-      {isMobile && gameState === 'playing' && (
-        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center z-20 pointer-events-auto">
-            {/* P1 Controls */}
-            <div className="flex items-center gap-2">
-                <TouchButton id="p1-left"><ArrowLeft className="w-10 h-10"/></TouchButton>
-                <TouchButton id="p1-right"><ArrowRight className="w-10 h-10"/></TouchButton>
-            </div>
-            <TouchButton id="p1-fire" className="w-24 h-24"><Crosshair className="w-12 h-12"/></TouchButton>
-
-            {gameMode === 'versus' && (
-              <>
-                {/* P2 Controls */}
-                <TouchButton id="p2-fire" className="w-24 h-24"><Crosshair className="w-12 h-12"/></TouchButton>
-                <div className="flex items-center gap-2">
-                    <TouchButton id="p2-left"><ArrowLeft className="w-10 h-10"/></TouchButton>
-                    <TouchButton id="p2-right"><ArrowRight className="w-10 h-10"/></TouchButton>
-                </div>
-              </>
-            )}
-        </div>
-      )}
-
       {gameState === 'menu' && renderMenu()}
       {gameState === 'over' && renderGameOver()}
     </>
