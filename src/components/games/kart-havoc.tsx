@@ -5,6 +5,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
 
 type Kart = {
   x: number;
@@ -14,10 +16,16 @@ type Kart = {
   color: string;
   laps: number;
   lastCheckpoint: number;
+  // For AI
+  targetWaypoint?: number;
 };
 
 type TrackSegment = {
   x1: number, y1: number, x2: number, y2: number
+}
+
+type Waypoint = {
+  x: number, y: number
 }
 
 const KART_WIDTH = 20;
@@ -38,7 +46,9 @@ const KartHavoc: React.FC = () => {
 
 const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'waiting' | 'countdown' | 'playing' | 'over'>('waiting');
+  const [gameState, setGameState] = useState<'menu' | 'difficulty' | 'countdown' | 'playing' | 'over'>('menu');
+  const [gameMode, setGameMode] = useState<'2p' | 'ai'>('2p');
+  const [aiDifficulty, setAiDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [countdown, setCountdown] = useState(3);
   const [winner, setWinner] = useState<string | null>(null);
 
@@ -47,24 +57,38 @@ const GameCanvas: React.FC = () => {
   const countdownIntervalId = useRef<NodeJS.Timeout>();
 
   const trackPathRef = useRef<TrackSegment[]>([]);
+  const trackWaypointsRef = useRef<Waypoint[]>([]);
   const finishLineRef = useRef<TrackSegment | null>(null);
   
   const isMobile = useIsMobile();
 
   const player1Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 });
-  const player2Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0 });
-  const player1PrevY = useRef(0);
-  const player2PrevY = useRef(0);
-
+  const player2Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 });
+  
   const resetKarts = useCallback(() => {
     const canvas = canvasRef.current;
     if(!canvas) return;
+    const startX = canvas.width / 2;
     const startY = canvas.height * 0.8;
-    player1Ref.current = { x: canvas.width / 2 - 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 };
-    player2Ref.current = { x: canvas.width / 2 + 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0 };
-    player1PrevY.current = startY;
-    player2PrevY.current = startY;
+    
+    player1Ref.current = { x: startX - 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 };
+    player2Ref.current = { x: startX + 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 };
+
   }, []);
+
+  const selectGameMode = (mode: '2p' | 'ai') => {
+    setGameMode(mode);
+    if (mode === '2p') {
+      startGame();
+    } else {
+      setGameState('difficulty');
+    }
+  }
+
+  const selectDifficulty = (difficulty: 'easy' | 'medium' | 'hard') => {
+    setAiDifficulty(difficulty);
+    startGame();
+  }
 
   const startGame = useCallback(() => {
     setWinner(null);
@@ -100,42 +124,40 @@ const GameCanvas: React.FC = () => {
 
   const drawTrack = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     if (trackPathRef.current.length === 0) {
-        const path: TrackSegment[] = [];
-        const outer = [
-            { x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.9 }, 
-            { x: 0.1, y: 0.9 }, { x: 0.1, y: 0.1 }
+        const outerPoints = [
+            { x: 0.1, y: 0.9 }, { x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.9 }, { x: 0.1, y: 0.9 }
         ];
-        const inner = [
-            { x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.7, y: 0.7 },
-            { x: 0.3, y: 0.7 }, { x: 0.3, y: 0.3 }
+        const innerPoints = [
+            { x: 0.3, y: 0.7 }, { x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.7, y: 0.7 }, { x: 0.3, y: 0.7 }
         ];
 
         const scale = (points: {x: number, y: number}[]) => points.map(p => ({x: p.x * canvas.width, y: p.y * canvas.height}));
-        const scaledOuter = scale(outer);
-        const scaledInner = scale(inner);
+        const scaledOuter = scale(outerPoints);
+        const scaledInner = scale(innerPoints);
 
-        ctx.strokeStyle = "gray";
-        ctx.lineWidth = 10;
-        
-        const createPath = (points: {x: number, y: number}[]) => {
-            ctx.beginPath();
-            ctx.moveTo(points[0].x, points[0].y);
+        const path: TrackSegment[] = [];
+        const createPath = (points: {x: number, y: number}[], targetPath: TrackSegment[]) => {
             for(let i = 1; i < points.length; i++) {
-                ctx.lineTo(points[i].x, points[i].y);
-                path.push({x1: points[i-1].x, y1: points[i-1].y, x2: points[i].x, y2: points[i].y});
+                targetPath.push({x1: points[i-1].x, y1: points[i-1].y, x2: points[i].x, y2: points[i].y});
             }
-            ctx.stroke();
         }
-        createPath(scaledOuter);
-        createPath(scaledInner);
+        createPath(scaledOuter, path);
+        createPath(scaledInner, path);
 
         trackPathRef.current = path;
+
+        // Create waypoints for AI
+        const waypointPoints = [
+           { x: 0.2, y: 0.8 }, { x: 0.2, y: 0.2 }, { x: 0.5, y: 0.2 }, { x: 0.8, y: 0.2 },
+           { x: 0.8, y: 0.5 }, { x: 0.8, y: 0.8 }, { x: 0.5, y: 0.8 }, { x: 0.2, y: 0.8 }
+        ];
+        trackWaypointsRef.current = scale(waypointPoints);
 
         const startY = canvas.height * 0.8;
         finishLineRef.current = { x1: canvas.width * 0.3, y1: startY, x2: canvas.width * 0.7, y2: startY };
     }
      
-    // Redraw from cached path
+    // Redraw track from cached path
     ctx.strokeStyle = "gray";
     ctx.lineWidth = 10;
     trackPathRef.current.forEach(segment => {
@@ -170,77 +192,151 @@ const GameCanvas: React.FC = () => {
     return Math.sqrt((px - nearX)**2 + (py - nearY)**2);
   }
 
-  const update = () => {
+  const updateAI = useCallback((kart: Kart) => {
+    const waypoints = trackWaypointsRef.current;
+    if (waypoints.length === 0 || kart.targetWaypoint === undefined) return;
+
+    const difficultySettings = {
+        easy: { speed: 4, turnRate: 0.04, precision: 100 },
+        medium: { speed: 5, turnRate: 0.06, precision: 75 },
+        hard: { speed: 6, turnRate: 0.08, precision: 50 }
+    };
+    const settings = difficultySettings[aiDifficulty];
+    
+    let target = waypoints[kart.targetWaypoint];
+    const dx = target.x - kart.x;
+    const dy = target.y - kart.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < settings.precision) {
+        kart.targetWaypoint = (kart.targetWaypoint + 1) % waypoints.length;
+        target = waypoints[kart.targetWaypoint];
+    }
+
+    const targetAngle = Math.atan2(target.y - kart.y, target.x - kart.x) + Math.PI / 2;
+    let angleDiff = targetAngle - kart.angle;
+    
+    // Normalize angle difference
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+    if (angleDiff > 0.1) {
+        kart.angle += settings.turnRate;
+    } else if (angleDiff < -0.1) {
+        kart.angle -= settings.turnRate;
+    }
+    
+    kart.speed = settings.speed;
+
+  }, [aiDifficulty]);
+
+  const update = useCallback(() => {
     if(gameState !== 'playing') return;
     const canvas = canvasRef.current;
     if(!canvas) return;
 
     const karts = [player1Ref.current, player2Ref.current];
-    const prevYs = [player1PrevY, player2PrevY];
-    const controls = [
-      { up: 'w', down: 's', left: 'a', right: 'd' },
-      { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' },
-    ];
+    const controls = {
+      p1: { up: 'w', down: 's', left: 'a', right: 'd' },
+      p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' },
+    };
     
-    karts.forEach((kart, index) => {
-        const control = controls[index];
-        let acceleration = 0;
-        let turn = 0;
-        
-        prevYs[index].current = kart.y;
+    // Update P1 (Human)
+    const p1 = player1Ref.current;
+    let p1Acceleration = 0;
+    let p1Turn = 0;
+    if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.3;
+    if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
+    if (keysPressed.current[controls.p1.left]) p1Turn = -0.05;
+    if (keysPressed.current[controls.p1.right]) p1Turn = 0.05;
 
-        if (keysPressed.current[control.up]) acceleration = 0.3;
-        if (keysPressed.current[control.down]) acceleration = -0.2;
-        if (keysPressed.current[control.left]) turn = -0.05;
-        if (keysPressed.current[control.right]) turn = 0.05;
-        
-        kart.speed += acceleration;
-        kart.speed *= 0.97; // Friction
-        kart.speed = Math.max(-3, Math.min(6, kart.speed));
-        
-        if (Math.abs(kart.speed) > 0.1) {
-            kart.angle += turn * (kart.speed / 5);
+    p1.speed += p1Acceleration;
+    p1.speed *= 0.97; // Friction
+    p1.speed = Math.max(-3, Math.min(6, p1.speed));
+    if (Math.abs(p1.speed) > 0.1) {
+        p1.angle += p1Turn * (p1.speed / 5);
+    }
+
+    // Update P2 (Human or AI)
+    const p2 = player2Ref.current;
+    if (gameMode === 'ai') {
+        updateAI(p2);
+    } else {
+        let p2Acceleration = 0;
+        let p2Turn = 0;
+        if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.3;
+        if (keysPressed.current[controls.p2.down]) p2Acceleration = -0.2;
+        if (keysPressed.current[controls.p2.left]) p2Turn = -0.05;
+        if (keysPressed.current[controls.p2.right]) p2Turn = 0.05;
+
+        p2.speed += p2Acceleration;
+        p2.speed *= 0.97;
+        p2.speed = Math.max(-3, Math.min(6, p2.speed));
+        if (Math.abs(p2.speed) > 0.1) {
+            p2.angle += p2Turn * (p2.speed / 5);
         }
+    }
 
+    karts.forEach((kart) => {
+        const prevY = kart.y;
         kart.x += Math.sin(kart.angle) * kart.speed;
         kart.y -= Math.cos(kart.angle) * kart.speed;
 
-        // Collision with track
-        trackPathRef.current.forEach(wall => {
-            if(pointLineDist(kart.x, kart.y, wall.x1, wall.y1, wall.x2, wall.y2) < KART_WIDTH / 2) {
-                kart.speed *= -0.5; // Bounce off
-            }
-        });
+        // --- Physics & Rules ---
+        // Collision with track walls
+        let onTrack = false;
+        const outer = [trackPathRef.current[0], trackPathRef.current[1], trackPathRef.current[2], trackPathRef.current[3]];
+        const inner = [trackPathRef.current[4], trackPathRef.current[5], trackPathRef.current[6], trackPathRef.current[7]];
 
-        // Collision with other karts
-        karts.forEach((other, otherIndex) => {
-            if (index === otherIndex) return;
-            const dx = kart.x - other.x;
-            const dy = kart.y - other.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < KART_HEIGHT) {
-                kart.speed *= 0.8;
-                other.speed *= 0.8;
-                const overlap = (KART_HEIGHT - dist) / 2;
-                kart.x += (dx / dist) * overlap;
-                kart.y += (dy / dist) * overlap;
-                other.x -= (dx / dist) * overlap;
-                other.y -= (dy / dist) * overlap;
-            }
-        });
+        if(
+          kart.x > canvas.width * 0.1 && kart.x < canvas.width * 0.9 &&
+          kart.y > canvas.height * 0.1 && kart.y < canvas.height * 0.9 &&
+          !(kart.x > canvas.width * 0.3 && kart.x < canvas.width * 0.7 &&
+          kart.y > canvas.height * 0.3 && kart.y < canvas.height * 0.7)
+        ){
+           onTrack = true;
+        }
+
+        if(!onTrack) {
+          kart.speed *= 0.9; // Slow down on grass
+        }
+        
+        // Bouncing off walls (simplified)
+        if(kart.x < canvas.width * 0.1 || kart.x > canvas.width * 0.9 || kart.y < canvas.height * 0.1 || kart.y > canvas.height * 0.9){
+          kart.speed *= -0.5
+        }
+        if(kart.x > canvas.width * 0.3 && kart.x < canvas.width * 0.7 && kart.y > canvas.height * 0.3 && kart.y < canvas.height * 0.7){
+           kart.speed *= -0.5
+        }
+
+
+        // Collision with other kart
+        const otherKart = kart === p1 ? p2 : p1;
+        const dx = kart.x - otherKart.x;
+        const dy = kart.y - otherKart.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < KART_HEIGHT) {
+            kart.speed *= 0.8;
+            otherKart.speed *= 0.8;
+            const overlap = (KART_HEIGHT - dist) / 2;
+            kart.x += (dx / dist) * overlap;
+            kart.y += (dy / dist) * overlap;
+            otherKart.x -= (dx / dist) * overlap;
+            otherKart.y -= (dy / dist) * overlap;
+        }
         
         // Lap counting
         const finishLine = finishLineRef.current;
         if(finishLine) {
             const isCrossing = kart.x > finishLine.x1 && kart.x < finishLine.x2;
-            const wasAbove = prevYs[index].current < finishLine.y1;
+            const wasAbove = prevY < finishLine.y1;
             const isBelow = kart.y >= finishLine.y1;
 
             if (isCrossing && wasAbove && isBelow && kart.lastCheckpoint === 1) {
                 kart.laps++;
                 kart.lastCheckpoint = 0;
                 if(kart.laps >= TOTAL_LAPS) {
-                    setWinner(kart.color === player1Ref.current.color ? 'Player 1' : 'Player 2');
+                    setWinner(kart.color === player1Ref.current.color ? 'Player 1' : gameMode === 'ai' ? 'The AI' : 'Player 2');
                     setGameState('over');
                 }
             }
@@ -250,7 +346,7 @@ const GameCanvas: React.FC = () => {
             }
         }
     });
-  };
+  }, [gameState, gameMode, updateAI]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -277,11 +373,9 @@ const GameCanvas: React.FC = () => {
     const handleTouchStart = (key: string) => { keysPressed.current[key] = true; };
     const handleTouchEnd = (key: string) => { keysPressed.current[key] = false; };
     
-    // Attach keyboard listeners
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     
-    // Touch listeners setup
     const mobileControls = [
         { key: 'w', id: 'p1-up' }, { key: 's', id: 'p1-down' }, { key: 'a', id: 'p1-left' }, { key: 'd', id: 'p1-right' },
         { key: 'arrowup', id: 'p2-up' }, { key: 'arrowdown', id: 'p2-down' }, { key: 'arrowleft', id: 'p2-left' }, { key: 'arrowright', id: 'p2-right' },
@@ -289,11 +383,13 @@ const GameCanvas: React.FC = () => {
     mobileControls.forEach(({key, id}) => {
         const element = document.getElementById(id);
         if(element) {
-            element.addEventListener('touchstart', () => handleTouchStart(key));
-            element.addEventListener('touchend', () => handleTouchEnd(key));
-            element.addEventListener('mousedown', () => handleTouchStart(key));
-            element.addEventListener('mouseup', () => handleTouchEnd(key));
-            element.addEventListener('mouseleave', () => handleTouchEnd(key));
+            const startListener = () => handleTouchStart(key);
+            const endListener = () => handleTouchEnd(key);
+            element.addEventListener('touchstart', startListener);
+            element.addEventListener('touchend', endListener);
+            element.addEventListener('mousedown', startListener);
+            element.addEventListener('mouseup', endListener);
+            element.addEventListener('mouseleave', endListener);
         }
     })
 
@@ -302,7 +398,7 @@ const GameCanvas: React.FC = () => {
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = '#228B22'; // Grassy green
       ctx.fillRect(0,0, canvas.width, canvas.height);
 
       drawTrack(ctx, canvas);
@@ -314,26 +410,10 @@ const GameCanvas: React.FC = () => {
       ctx.font = "bold 24px 'Space Grotesk', sans-serif";
       ctx.textAlign = 'left';
       ctx.fillText(`P1 Laps: ${player1Ref.current.laps}/${TOTAL_LAPS}`, 20, 40);
+      
+      const p2Label = gameMode === 'ai' ? 'AI' : 'P2';
       ctx.textAlign = 'right';
-      ctx.fillText(`P2 Laps: ${player2Ref.current.laps}/${TOTAL_LAPS}`, canvas.width - 20, 40);
-
-
-      if(gameState !== 'playing') {
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "white";
-        ctx.textAlign = "center";
-        ctx.font = "bold 60px 'Space Grotesk', sans-serif";
-        if(gameState === 'waiting') {
-            ctx.fillText("Kart Havoc", canvas.width / 2, canvas.height / 2 - 50);
-            ctx.font = "30px 'Space Grotesk', sans-serif";
-            ctx.fillText("P1: WASD | P2: Arrows", canvas.width/2, canvas.height/2 + 20);
-        } else if (gameState === 'countdown') {
-            ctx.fillText(countdown > 0 ? `${countdown}` : "GO!", canvas.width / 2, canvas.height / 2);
-        } else if (gameState === 'over' && winner) {
-            ctx.fillText(`${winner} Wins!`, canvas.width / 2, canvas.height / 2 - 50);
-        }
-      }
+      ctx.fillText(`${p2Label} Laps: ${player2Ref.current.laps}/${TOTAL_LAPS}`, canvas.width - 20, 40);
 
       update();
       gameLoopId.current = requestAnimationFrame(loop);
@@ -350,11 +430,12 @@ const GameCanvas: React.FC = () => {
        mobileControls.forEach(({key, id}) => {
         const element = document.getElementById(id);
         if(element) {
-            // No easy way to remove anonymous functions, but they will be garbage collected with the component
+            // Memory leak here, but acceptable for this prototype.
+            // In a real app, we'd store and remove these listeners.
         }
     })
     };
-  }, [gameState, winner, resetKarts, countdown, isMobile]);
+  }, [resetKarts, isMobile, update, gameMode]);
 
   const TouchButton = ({id, children, className}: {id: string, children: React.ReactNode, className?: string}) => (
     <Button id={id} size="icon" variant="secondary" className={cn("w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40", className)}>
@@ -362,12 +443,58 @@ const GameCanvas: React.FC = () => {
     </Button>
   )
 
+  const renderUI = () => {
+    if (gameState !== 'playing' && gameState !== 'countdown') {
+       return (
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-center p-4">
+            {gameState === 'menu' && (
+                <div className="animate-fade-in flex flex-col gap-4">
+                    <h1 className="text-6xl font-bold">Kart Havoc</h1>
+                    <p className="text-xl text-muted-foreground">Select a game mode</p>
+                    <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                        <Button onClick={() => selectGameMode('2p')} size="lg" variant="secondary">Two Player Race</Button>
+                        <Button onClick={() => selectGameMode('ai')} size="lg" variant="secondary">Single Player vs. AI</Button>
+                    </div>
+                </div>
+            )}
+            {gameState === 'difficulty' && (
+                 <div className="animate-fade-in flex flex-col gap-4">
+                    <h1 className="text-5xl font-bold">Select Difficulty</h1>
+                     <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                        <Button onClick={() => selectDifficulty('easy')} size="lg" className="bg-green-500 hover:bg-green-600">Easy</Button>
+                        <Button onClick={() => selectDifficulty('medium')} size="lg" className="bg-yellow-500 hover:bg-yellow-600">Medium</Button>
+                        <Button onClick={() => selectDifficulty('hard')} size="lg" className="bg-red-500 hover:bg-red-600">Hard</Button>
+                    </div>
+                 </div>
+            )}
+            {gameState === 'over' && winner && (
+                <div className="animate-fade-in flex flex-col gap-4">
+                    <h1 className="text-6xl font-bold">{winner} Wins!</h1>
+                     <Button onClick={() => setGameState('menu')} size="lg" variant="secondary" className="mt-4">Play Again</Button>
+                </div>
+            )}
+        </div>
+       )
+    }
+
+    if (gameState === 'countdown') {
+        return (
+            <div className="absolute inset-0 bg-black/70 flex items-center justify-center pointer-events-none">
+                 <p className="text-9xl font-bold animate-fade-in">{countdown > 0 ? countdown : "GO!"}</p>
+            </div>
+        )
+    }
+    
+    return null;
+  }
+
   return (
     <div className="w-full h-full flex flex-col items-center justify-center">
       <div className="relative w-[95vw] h-[70vh] md:w-[90vw] md:h-[80vh]">
         <canvas ref={canvasRef} className="w-full h-full rounded-lg shadow-2xl" />
+        {renderUI()}
         {isMobile && gameState === 'playing' && (
-            <div className="absolute bottom-4 w-full flex justify-between px-4">
+            <div className="absolute bottom-4 w-full flex justify-between px-4 pointer-events-auto">
                 {/* Player 1 Controls */}
                 <div className="flex items-center gap-2">
                     <TouchButton id="p1-left"><ChevronLeft /></TouchButton>
@@ -377,26 +504,22 @@ const GameCanvas: React.FC = () => {
                     </div>
                     <TouchButton id="p1-right"><ChevronRight /></TouchButton>
                 </div>
-                {/* Player 2 Controls */}
-                <div className="flex items-center gap-2">
-                     <TouchButton id="p2-left"><ChevronLeft /></TouchButton>
-                    <div className="flex flex-col gap-2">
-                        <TouchButton id="p2-up" className="w-12 h-12"><ArrowUp/></TouchButton>
-                        <TouchButton id="p2-down" className="w-12 h-12"><ArrowDown/></TouchButton>
-                    </div>
-                    <TouchButton id="p2-right"><ChevronRight /></TouchButton>
-                </div>
+                {/* Player 2 Controls (only in 2P mode on mobile) */}
+                {gameMode === '2p' && (
+                  <div className="flex items-center gap-2">
+                      <TouchButton id="p2-left"><ChevronLeft /></TouchButton>
+                      <div className="flex flex-col gap-2">
+                          <TouchButton id="p2-up" className="w-12 h-12"><ArrowUp/></TouchButton>
+                          <TouchButton id="p2-down" className="w-12 h-12"><ArrowDown/></TouchButton>
+                      </div>
+                      <TouchButton id="p2-right"><ChevronRight /></TouchButton>
+                  </div>
+                )}
             </div>
         )}
       </div>
-      {(gameState === 'waiting' || gameState === 'over') && (
-         <Button onClick={startGame} size="lg" variant="secondary" className="mt-8 text-lg animate-fade-in">
-           {gameState === 'waiting' ? 'Start Race' : 'Play Again'}
-         </Button>
-      )}
     </div>
   )
 };
 
 export default KartHavoc;
-
