@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 type Body = {
+  id: string;
   x: number;
   y: number;
   width: number;
@@ -12,6 +13,7 @@ type Body = {
   vy: number;
   color: string;
   friction: number;
+  mass: number;
 };
 
 const SoccerScramble: React.FC = () => {
@@ -41,37 +43,40 @@ const GameCanvas: React.FC = () => {
   const [countdown, setCountdown] = useState(3);
   const [lastGoal, setLastGoal] = useState<string | null>(null);
 
-  const player1Ref = useRef<Body>({ x: 0, y: 0, width: 50, height: 50, vx: 0, vy: 0, color: '#4285F4', friction: 0.9 });
-  const player2Ref = useRef<Body>({ x: 0, y: 0, width: 50, height: 50, vx: 0, vy: 0, color: '#DB4437', friction: 0.9 });
-  const ballRef = useRef<Body>({ x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98 });
+  const player1Ref = useRef<Body>({ id: 'p1', x: 0, y: 0, width: 50, height: 50, vx: 0, vy: 0, color: '#4285F4', friction: 0.9, mass: 10 });
+  const player2Ref = useRef<Body>({ id: 'p2', x: 0, y: 0, width: 50, height: 50, vx: 0, vy: 0, color: '#DB4437', friction: 0.9, mass: 10 });
+  const ballRef = useRef<Body>({ id: 'ball', x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98, mass: 1 });
   
   const gameLoopId = useRef<number>();
   const countdownIntervalRef = useRef<NodeJS.Timeout>();
 
 
-  const GRAVITY = 0.6;
-  const JUMP_POWER = -12;
-  const MOVE_SPEED = 6;
+  const GRAVITY = 0.5;
+  const JUMP_POWER = -15;
+  const MOVE_SPEED = 0.8;
   const MAX_SPEED = 15;
 
-  const resetPositions = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
+  const resetPositions = useCallback((canvas: HTMLCanvasElement) => {
     player1Ref.current = { ...player1Ref.current, x: canvas.width / 4, y: canvas.height - 100, vx: 0, vy: 0 };
     player2Ref.current = { ...player2Ref.current, x: (canvas.width / 4) * 3, y: canvas.height - 100, vx: 0, vy: 0 };
-    ballRef.current = { ...ballRef.current, x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0 };
+    ballRef.current = { ...ballRef.current, x: canvas.width / 2 - 15, y: canvas.height / 2, vx: 0, vy: 0 };
   }, []);
 
   const startGame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+
     setScores({ player1: 0, player2: 0 });
     setLastGoal(null);
     setGameState('playing');
     setCountdown(3);
-    resetPositions();
+    resetPositions(canvas);
   }, [resetPositions]);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+    
     setScores(prevScores => {
         const newScores = { ...prevScores };
         if (scoringPlayer === 'player1') {
@@ -85,7 +90,7 @@ const GameCanvas: React.FC = () => {
         } else {
             setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
             setCountdown(3);
-            resetPositions();
+            resetPositions(canvas);
             setTimeout(() => setLastGoal(null), 2000);
         }
         return newScores;
@@ -94,11 +99,15 @@ const GameCanvas: React.FC = () => {
 
   useEffect(() => {
     if (gameState === 'playing' && countdown > 0) {
-      countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => prev - 1);
-      }, 1000);
-    } else if (countdown <= 0) {
       if(countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev - 1 <= 0) {
+            if(countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          }
+          return prev - 1;
+        });
+      }, 1000);
     }
   
     return () => {
@@ -119,9 +128,9 @@ const GameCanvas: React.FC = () => {
         canvas.height = window.innerHeight;
         if (gameState !== 'playing') {
             setGameState('waiting');
-            resetPositions();
+            resetPositions(canvas);
         } else {
-            resetPositions();
+            resetPositions(canvas);
         }
     };
     handleResize();
@@ -158,27 +167,34 @@ const GameCanvas: React.FC = () => {
       const entities = [player1Ref.current, player2Ref.current, ballRef.current];
       const player1 = player1Ref.current;
       const player2 = player2Ref.current;
+      const ball = ballRef.current;
 
       // Player 1 controls
-      if (keysPressed.current['a']) player1.vx = -MOVE_SPEED;
-      else if (keysPressed.current['d']) player1.vx = MOVE_SPEED;
-      else player1.vx = 0;
-      if (keysPressed.current['w'] && player1.y + player1.height >= canvas.height) {
+      if (keysPressed.current['a']) player1.vx -= MOVE_SPEED;
+      if (keysPressed.current['d']) player1.vx += MOVE_SPEED;
+      if (keysPressed.current['w'] && player1.y + player1.height >= canvas.height - 1) {
         player1.vy = JUMP_POWER;
       }
       
       // Player 2 controls
-      if (keysPressed.current['arrowleft']) player2.vx = -MOVE_SPEED;
-      else if (keysPressed.current['arrowright']) player2.vx = MOVE_SPEED;
-      else player2.vx = 0;
-      if (keysPressed.current['arrowup'] && player2.y + player2.height >= canvas.height) {
+      if (keysPressed.current['arrowleft']) player2.vx -= MOVE_SPEED;
+      if (keysPressed.current['arrowright']) player2.vx += MOVE_SPEED;
+      if (keysPressed.current['arrowup'] && player2.y + player2.height >= canvas.height - 1) {
         player2.vy = JUMP_POWER;
       }
 
       entities.forEach(body => {
-        // Gravity
-        body.vy += GRAVITY;
+        // Gravity (not for ball)
+        if(body.id !== 'ball') {
+           body.vy += GRAVITY;
+        } else {
+           body.vy += GRAVITY * 0.2; // Lighter gravity for ball
+        }
 
+        // Update position
+        body.x += body.vx;
+        body.y += body.vy;
+        
         // Friction
         body.vx *= body.friction;
         body.vy *= body.friction;
@@ -186,10 +202,6 @@ const GameCanvas: React.FC = () => {
         // Clamp speed
         body.vx = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, body.vx));
         body.vy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, body.vy));
-
-        // Update position
-        body.x += body.vx;
-        body.y += body.vy;
 
         // Wall collisions
         if (body.x < 0) {
@@ -225,22 +237,42 @@ const GameCanvas: React.FC = () => {
             const min_dist = (body1.width / 2 + body2.width / 2);
             
             if (distance < min_dist) {
+                // Collision response
                 const angle = Math.atan2(dy, dx);
-                const tx = (body1.x + body1.width / 2) + Math.cos(angle) * min_dist;
-                const ty = (body1.y + body1.height / 2) + Math.sin(angle) * min_dist;
-                const ax = (tx - (body2.x + body2.width / 2)) * 0.5;
-                const ay = (ty - (body2.y + body2.height / 2)) * 0.5;
+                const overlap = min_dist - distance;
+                
+                // Static resolution (push apart)
+                const resolveX = overlap * Math.cos(angle);
+                const resolveY = overlap * Math.sin(angle);
+                
+                const totalMass = body1.mass + body2.mass;
+                const body1MoveFactor = body2.mass / totalMass;
+                const body2MoveFactor = body1.mass / totalMass;
 
-                body1.vx -= ax;
-                body1.vy -= ay;
-                body2.vx += ax;
-                body2.vy += ay;
+                body1.x += resolveX * body1MoveFactor;
+                body1.y += resolveY * body1MoveFactor;
+                body2.x -= resolveX * body2MoveFactor;
+                body2.y -= resolveY * body2MoveFactor;
+                
+                // Dynamic resolution (transfer momentum)
+                const normalX = dx / distance;
+                const normalY = dy / distance;
+                const relativeVelX = body1.vx - body2.vx;
+                const relativeVelY = body1.vy - body2.vy;
+                const speed = relativeVelX * normalX + relativeVelY * normalY;
+
+                if (speed < 0) {
+                    const impulse = 2 * speed / totalMass;
+                    body1.vx -= impulse * body2.mass * normalX;
+                    body1.vy -= impulse * body2.mass * normalY;
+                    body2.vx += impulse * body1.mass * normalX;
+                    body2.vy += impulse * body1.mass * normalY;
+                }
             }
         }
       }
 
       // Goal check
-      const ball = ballRef.current;
       const goalHeight = 150;
       const goalWidth = 20;
       // Player 2 scores (left goal)
