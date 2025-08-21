@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Kart = {
   x: number;
@@ -12,7 +14,6 @@ type Kart = {
   color: string;
   laps: number;
   lastCheckpoint: number;
-  vy?: number;
 };
 
 type TrackSegment = {
@@ -47,9 +48,13 @@ const GameCanvas: React.FC = () => {
 
   const trackPathRef = useRef<TrackSegment[]>([]);
   const finishLineRef = useRef<TrackSegment | null>(null);
+  
+  const isMobile = useIsMobile();
 
   const player1Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 });
   const player2Ref = useRef<Kart>({ x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0 });
+  const player1PrevY = useRef(0);
+  const player2PrevY = useRef(0);
 
   const resetKarts = useCallback(() => {
     const canvas = canvasRef.current;
@@ -57,6 +62,8 @@ const GameCanvas: React.FC = () => {
     const startY = canvas.height * 0.8;
     player1Ref.current = { x: canvas.width / 2 - 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 };
     player2Ref.current = { x: canvas.width / 2 + 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0 };
+    player1PrevY.current = startY;
+    player2PrevY.current = startY;
   }, []);
 
   const startGame = useCallback(() => {
@@ -169,6 +176,7 @@ const GameCanvas: React.FC = () => {
     if(!canvas) return;
 
     const karts = [player1Ref.current, player2Ref.current];
+    const prevYs = [player1PrevY, player2PrevY];
     const controls = [
       { up: 'w', down: 's', left: 'a', right: 'd' },
       { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' },
@@ -178,6 +186,8 @@ const GameCanvas: React.FC = () => {
         const control = controls[index];
         let acceleration = 0;
         let turn = 0;
+        
+        prevYs[index].current = kart.y;
 
         if (keysPressed.current[control.up]) acceleration = 0.3;
         if (keysPressed.current[control.down]) acceleration = -0.2;
@@ -223,7 +233,7 @@ const GameCanvas: React.FC = () => {
         const finishLine = finishLineRef.current;
         if(finishLine) {
             const isCrossing = kart.x > finishLine.x1 && kart.x < finishLine.x2;
-            const wasAbove = (kart.y - (kart.vy || 0)) < finishLine.y1;
+            const wasAbove = prevYs[index].current < finishLine.y1;
             const isBelow = kart.y >= finishLine.y1;
 
             if (isCrossing && wasAbove && isBelow && kart.lastCheckpoint === 1) {
@@ -250,8 +260,11 @@ const GameCanvas: React.FC = () => {
 
     const handleResize = () => {
       if(!canvasRef.current) return;
-      canvasRef.current.width = window.innerWidth * 0.9;
-      canvasRef.current.height = window.innerHeight * 0.9;
+      const parent = canvasRef.current.parentElement;
+      if (parent) {
+          canvasRef.current.width = parent.clientWidth;
+          canvasRef.current.height = parent.clientHeight;
+      }
       trackPathRef.current = []; // Force track redraw
       resetKarts();
     };
@@ -260,8 +273,29 @@ const GameCanvas: React.FC = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current[e.key.toLowerCase()] = true; };
     const handleKeyUp = (e: KeyboardEvent) => { keysPressed.current[e.key.toLowerCase()] = false; };
+    
+    const handleTouchStart = (key: string) => { keysPressed.current[key] = true; };
+    const handleTouchEnd = (key: string) => { keysPressed.current[key] = false; };
+    
+    // Attach keyboard listeners
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    
+    // Touch listeners setup
+    const mobileControls = [
+        { key: 'w', id: 'p1-up' }, { key: 's', id: 'p1-down' }, { key: 'a', id: 'p1-left' }, { key: 'd', id: 'p1-right' },
+        { key: 'arrowup', id: 'p2-up' }, { key: 'arrowdown', id: 'p2-down' }, { key: 'arrowleft', id: 'p2-left' }, { key: 'arrowright', id: 'p2-right' },
+    ];
+    mobileControls.forEach(({key, id}) => {
+        const element = document.getElementById(id);
+        if(element) {
+            element.addEventListener('touchstart', () => handleTouchStart(key));
+            element.addEventListener('touchend', () => handleTouchEnd(key));
+            element.addEventListener('mousedown', () => handleTouchStart(key));
+            element.addEventListener('mouseup', () => handleTouchEnd(key));
+            element.addEventListener('mouseleave', () => handleTouchEnd(key));
+        }
+    })
 
     const loop = () => {
       const ctx = canvas.getContext('2d');
@@ -313,12 +347,48 @@ const GameCanvas: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', handleResize);
+       mobileControls.forEach(({key, id}) => {
+        const element = document.getElementById(id);
+        if(element) {
+            // No easy way to remove anonymous functions, but they will be garbage collected with the component
+        }
+    })
     };
-  }, [gameState, winner, resetKarts, countdown]);
+  }, [gameState, winner, resetKarts, countdown, isMobile]);
+
+  const TouchButton = ({id, children, className}: {id: string, children: React.ReactNode, className?: string}) => (
+    <Button id={id} size="icon" variant="secondary" className={cn("w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40", className)}>
+        {children}
+    </Button>
+  )
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center">
-      <canvas ref={canvasRef} className="rounded-lg shadow-2xl" />
+      <div className="relative w-[95vw] h-[70vh] md:w-[90vw] md:h-[80vh]">
+        <canvas ref={canvasRef} className="w-full h-full rounded-lg shadow-2xl" />
+        {isMobile && gameState === 'playing' && (
+            <div className="absolute bottom-4 w-full flex justify-between px-4">
+                {/* Player 1 Controls */}
+                <div className="flex items-center gap-2">
+                    <TouchButton id="p1-left"><ChevronLeft /></TouchButton>
+                    <div className="flex flex-col gap-2">
+                        <TouchButton id="p1-up" className="w-12 h-12"><ArrowUp/></TouchButton>
+                        <TouchButton id="p1-down" className="w-12 h-12"><ArrowDown/></TouchButton>
+                    </div>
+                    <TouchButton id="p1-right"><ChevronRight /></TouchButton>
+                </div>
+                {/* Player 2 Controls */}
+                <div className="flex items-center gap-2">
+                     <TouchButton id="p2-left"><ChevronLeft /></TouchButton>
+                    <div className="flex flex-col gap-2">
+                        <TouchButton id="p2-up" className="w-12 h-12"><ArrowUp/></TouchButton>
+                        <TouchButton id="p2-down" className="w-12 h-12"><ArrowDown/></TouchButton>
+                    </div>
+                    <TouchButton id="p2-right"><ChevronRight /></TouchButton>
+                </div>
+            </div>
+        )}
+      </div>
       {(gameState === 'waiting' || gameState === 'over') && (
          <Button onClick={startGame} size="lg" variant="secondary" className="mt-8 text-lg animate-fade-in">
            {gameState === 'waiting' ? 'Start Race' : 'Play Again'}
@@ -329,3 +399,4 @@ const GameCanvas: React.FC = () => {
 };
 
 export default KartHavoc;
+
