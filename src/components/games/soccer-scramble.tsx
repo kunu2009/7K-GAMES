@@ -63,10 +63,10 @@ const GameCanvas: React.FC = () => {
   }, []);
 
   const startCountdown = useCallback(() => {
+    setCountdown(3);
     if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
     }
-    setCountdown(3);
     countdownIntervalRef.current = setInterval(() => {
         setCountdown(prev => {
             if (prev - 1 <= 0) {
@@ -91,14 +91,15 @@ const GameCanvas: React.FC = () => {
 
         if (newScores.player1 >= 3 || newScores.player2 >= 3) {
             setGameState('over');
-        } else {
-            setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
-            resetPositions(canvas);
-            startCountdown();
-            setTimeout(() => setLastGoal(null), 2000);
         }
         return newScores;
     });
+
+    setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
+    resetPositions(canvas);
+    startCountdown();
+    setTimeout(() => setLastGoal(null), 2000);
+
   }, [resetPositions, startCountdown]);
   
   const startGame = useCallback(() => {
@@ -378,7 +379,11 @@ const GameCanvas: React.FC = () => {
             ctx.fillText(gameState === 'over' ? winner : "Soccer Scramble", canvas.width / 2, canvas.height / 2 - 80);
             
             ctx.font = '30px "Space Grotesk", sans-serif';
-            ctx.fillText("Click or Tap to Play", canvas.width / 2, canvas.height / 2);
+            if (gameState === 'over') {
+                 ctx.fillText("Click or Tap to Play Again", canvas.width / 2, canvas.height / 2 + 50);
+            } else {
+                 ctx.fillText("Click or Tap to Play", canvas.width / 2, canvas.height / 2);
+            }
             ctx.shadowBlur = 0;
         } else if (countdown > 0) {
             ctx.fillStyle = 'white';
@@ -418,3 +423,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default SoccerScramble;
+
+    
