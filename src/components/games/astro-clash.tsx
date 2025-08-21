@@ -240,6 +240,7 @@ const GameCanvas: React.FC = () => {
         if(gameMode === 'solo') {
             ctx.textAlign = 'left';
             ctx.fillText(`Score: ${score}`, 20, 40);
+            ctx.fillText(`Lives: ${player1Ref.current.lives}`, 20, 70);
         } else if (gameMode === 'versus') {
             ctx.textAlign = 'left';
             ctx.fillStyle = player1Ref.current.color;
@@ -332,14 +333,14 @@ const GameCanvas: React.FC = () => {
         if (player2Ref.current && touchStateP2.current.isShooting) shoot(2);
 
       } else { // Keyboard controls
-          if (keysPressed.current['a'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
-          if (keysPressed.current['d'] && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
-          if (keysPressed.current[' '] || keysPressed.current['w']) shoot(1);
+          if (keysPressed.current['arrowleft'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
+          if (keysPressed.current['arrowright'] && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
+          if (keysPressed.current[' '] || keysPressed.current['arrowup']) shoot(1);
 
           if(player2Ref.current) {
-              if (keysPressed.current['arrowleft'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
-              if (keysPressed.current['arrowright'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
-              if (keysPressed.current['arrowup']) shoot(2);
+              if (keysPressed.current['a'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
+              if (keysPressed.current['d'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
+              if (keysPressed.current['shift'] || keysPressed.current['w']) shoot(2);
           }
       }
 
@@ -347,7 +348,7 @@ const GameCanvas: React.FC = () => {
       for(let i = bullets.current.length - 1; i >= 0; i--) {
         const bullet = bullets.current[i];
         bullet.y += bullet.vy;
-        if(bullet.y < 0) {
+        if(bullet.y < 0 || bullet.y > canvas.height) {
             bullets.current.splice(i, 1);
         }
       }
@@ -415,6 +416,7 @@ const GameCanvas: React.FC = () => {
           // Bullet-asteroid collision
           for (let k = asteroids.current.length - 1; k >= 0; k--) {
               const ast = asteroids.current[k];
+              if(!ast) continue;
               const dx = bullet.x - ast.x;
               const dy = bullet.y - ast.y;
               if (Math.sqrt(dx*dx + dy*dy) < ast.radius) {
@@ -433,6 +435,9 @@ const GameCanvas: React.FC = () => {
                   }
                   asteroids.current.splice(k, 1);
                   bullets.current.splice(i, 1);
+                  if (gameMode === 'solo' && bullet.ownerId === 1) {
+                      setScore(prev => prev + 5);
+                  }
                   break;
               }
           }
@@ -453,8 +458,8 @@ const GameCanvas: React.FC = () => {
                      const p1L = player.id === 1 ? 0 : player1Ref.current.lives;
                      const p2L = player.id === 2 ? 0 : player2Ref.current?.lives || 0;
                      if(p1L <= 0 && p2L <= 0) setWinner("It's a Draw!");
-                     else if (p1L > 0) setWinner('Player 1');
-                     else setWinner('Player 2');
+                     else if (p1L > 0) setWinner('Player 2'); // Player 1 is ID 1, so if P1 lives, P2 lost
+                     else setWinner('Player 1');
                      playSound(gameOverSoundRef);
                      setGameState('over');
                  } else if (gameMode === 'solo' && player.lives <= 0) {
@@ -471,14 +476,18 @@ const GameCanvas: React.FC = () => {
 
       if(gameMode === 'solo') {
         if(player1Ref.current.lives > 0) {
-            for (const enemy of enemies.current) {
+            for (let j = enemies.current.length - 1; j >= 0; j--) {
+                const enemy = enemies.current[j];
                 const dx = player1Ref.current.x - enemy.x;
                 const dy = player1Ref.current.y - enemy.y;
                 if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
                     createExplosion(player1Ref.current.x, player1Ref.current.y);
-                    player1Ref.current.lives = 0;
-                    playSound(gameOverSoundRef);
-                    setGameState('over');
+                    enemies.current.splice(j,1);
+                    player1Ref.current.lives--;
+                    if(player1Ref.current.lives <= 0){
+                        playSound(gameOverSoundRef);
+                        setGameState('over');
+                    }
                     break;
                 }
             }
@@ -505,7 +514,7 @@ const GameCanvas: React.FC = () => {
     };
     
     const spawnAsteroid = () => {
-        if (canvasRef.current && gameState === 'playing' && gameMode === 'versus') {
+        if (canvasRef.current && gameState === 'playing') { // Spawn for both modes now
             const edge = Math.floor(Math.random() * 4);
             let x, y, vx, vy;
             const radius = 40;
@@ -541,17 +550,26 @@ const GameCanvas: React.FC = () => {
     
     const handleKeyDown = (e: KeyboardEvent) => {
         if (gameState !== 'playing') return;
-        keysPressed.current[e.key.toLowerCase()] = true;
+        const key = e.key.toLowerCase();
+        keysPressed.current[key] = true;
         
-        // P1 shoot is `w` or space
-        if (e.key.toLowerCase() === ' ' || e.key.toLowerCase() === 'w') {
-             e.preventDefault();
-             shoot(1);
-        }
-         // P2 shoot is `arrowup`
-        if(e.key.toLowerCase() === 'arrowup' && gameMode === 'versus') {
-             e.preventDefault();
-             shoot(2);
+        if (gameMode === 'versus') {
+            // P1 shoot is `space` or `arrowup`
+            if (key === ' ' || key === 'arrowup') {
+                 e.preventDefault();
+                 shoot(1);
+            }
+             // P2 shoot is `shift` or `w`
+            if(key === 'shift' || key === 'w') {
+                 e.preventDefault();
+                 shoot(2);
+            }
+        } else {
+            // Solo mode shoot
+             if (key === ' ' || key === 'arrowup') {
+                 e.preventDefault();
+                 shoot(1);
+            }
         }
     };
 
@@ -565,27 +583,41 @@ const GameCanvas: React.FC = () => {
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         
-        touchStateP1.current = { touching: false, x: 0, y: 0, isShooting: false };
-        touchStateP2.current = { touching: false, x: 0, y: 0, isShooting: false };
+        // Reset states
+        touchStateP1.current = { ...touchStateP1.current, touching: false, isShooting: false };
+        if(player2Ref.current) {
+            touchStateP2.current = { ...touchStateP2.current, touching: false, isShooting: false };
+        }
 
         for (let i = 0; i < e.touches.length; i++) {
             const touch = e.touches[i];
             const x = touch.clientX - rect.left;
             const y = touch.clientY - rect.top;
+            
+            const shootZoneHeight = canvas.height * 0.2; // Top 20% is for shooting
 
-            if (x < canvas.width / 2) { // Left side of screen for P1
-                touchStateP1.current.touching = true;
-                touchStateP1.current.x = x * 2; // Scale to full screen width for easier control
-                touchStateP1.current.y = y;
-                if (y < canvas.height / 2) {
+            if (gameMode === 'solo') {
+                 if (y < shootZoneHeight) {
                     touchStateP1.current.isShooting = true;
+                } else {
+                    touchStateP1.current.touching = true;
+                    touchStateP1.current.x = x;
                 }
-            } else { // Right side for P2
-                touchStateP2.current.touching = true;
-                touchStateP2.current.x = (x - canvas.width / 2) * 2;
-                touchStateP2.current.y = y;
-                 if (y < canvas.height / 2) {
-                    touchStateP2.current.isShooting = true;
+            } else { // Versus mode
+                if (x < canvas.width / 2) { // Left side of screen for P1
+                     if (y < shootZoneHeight) {
+                        touchStateP1.current.isShooting = true;
+                    } else {
+                        touchStateP1.current.touching = true;
+                        touchStateP1.current.x = x;
+                    }
+                } else { // Right side for P2
+                    if (y < shootZoneHeight) {
+                        touchStateP2.current.isShooting = true;
+                    } else {
+                        touchStateP2.current.touching = true;
+                        touchStateP2.current.x = x;
+                    }
                 }
             }
         }
@@ -624,7 +656,7 @@ const GameCanvas: React.FC = () => {
 
   const renderMenu = () => (
     <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
-        <h2 className="text-6xl font-bold mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Astro Clash</h2>
+        <h2 className="text-6xl font-bold mb-8 text-center" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Astro Clash</h2>
         <div className="flex flex-col sm:flex-row gap-4">
             <Button onClick={() => startGame('solo')} size="lg" variant="secondary" className="text-lg">
                 Solo Mission
@@ -633,6 +665,28 @@ const GameCanvas: React.FC = () => {
                 Versus Mode
             </Button>
         </div>
+        { isMobile && (
+            <div className="mt-8 text-center text-muted-foreground p-4 rounded-md bg-background/20 max-w-sm">
+                <h3 className="font-bold text-lg mb-2 text-white">Mobile Controls</h3>
+                <p><span className="font-bold text-cyan-400">P1 (Solo/Versus):</span> Left side of screen.</p>
+                 <p><span className="font-bold text-red-500">P2 (Versus):</span> Right side of screen.</p>
+                <p className="mt-2">Drag bottom 80% to move. Tap top 20% to shoot.</p>
+            </div>
+        )}
+         { !isMobile && (
+            <div className="mt-8 text-left text-muted-foreground p-4 rounded-md bg-background/20 max-w-lg grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div>
+                    <h3 className="font-bold text-lg text-white">Player 1 Controls</h3>
+                    <p><span className="font-bold text-cyan-400">Move:</span> Left/Right Arrows</p>
+                    <p><span className="font-bold text-cyan-400">Shoot:</span> Spacebar / Up Arrow</p>
+                </div>
+                 <div>
+                    <h3 className="font-bold text-lg text-white">Player 2 Controls (Versus)</h3>
+                    <p><span className="font-bold text-red-500">Move:</span> A / D Keys</p>
+                    <p><span className="font-bold text-red-500">Shoot:</span> W Key / Left Shift</p>
+                </div>
+            </div>
+        )}
     </div>
   );
 
@@ -647,7 +701,7 @@ const GameCanvas: React.FC = () => {
 
     return (
         <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
-            <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{title}</h2>
+            <h2 className="text-6xl font-bold mb-4 text-center" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{title}</h2>
             <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{subTitle}</p>
             <Button onClick={() => setGameState('menu')} size="lg" variant="secondary" className="text-lg">
                 Main Menu
@@ -677,3 +731,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default AstroClash;
+
+    
