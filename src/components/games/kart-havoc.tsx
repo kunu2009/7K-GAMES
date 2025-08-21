@@ -56,7 +56,7 @@ const GameCanvas: React.FC = () => {
   const gameLoopId = useRef<number>();
   const countdownIntervalId = useRef<NodeJS.Timeout>();
 
-  const trackPathRef = useRef<TrackSegment[]>([]);
+  const trackPathRef = useRef<Path2D | null>(null);
   const trackWaypointsRef = useRef<Waypoint[]>([]);
   const finishLineRef = useRef<TrackSegment | null>(null);
   
@@ -67,9 +67,9 @@ const GameCanvas: React.FC = () => {
   
   const resetKarts = useCallback(() => {
     const canvas = canvasRef.current;
-    if(!canvas) return;
-    const startX = canvas.width / 2;
-    const startY = canvas.height * 0.8;
+    if(!canvas || !finishLineRef.current) return;
+    const startX = (finishLineRef.current.x1 + finishLineRef.current.x2) / 2;
+    const startY = finishLineRef.current.y1 + 60;
     
     player1Ref.current = { x: startX - 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 };
     player2Ref.current = { x: startX + 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 };
@@ -114,92 +114,94 @@ const GameCanvas: React.FC = () => {
     ctx.save();
     ctx.translate(kart.x, kart.y);
     ctx.rotate(kart.angle);
+    
+    const w = KART_WIDTH;
+    const h = KART_HEIGHT;
+    
+    // Kart Body
     ctx.fillStyle = kart.color;
-    ctx.fillRect(-KART_WIDTH / 2, -KART_HEIGHT / 2, KART_WIDTH, KART_HEIGHT);
-    // Add a simple "front" indicator
-    ctx.fillStyle = "white";
-    ctx.fillRect(-KART_WIDTH / 2, -KART_HEIGHT / 2, KART_WIDTH, 5);
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-w/2, -h/2, w, h);
+
+    // Wheels
+    ctx.fillStyle = '#222';
+    ctx.fillRect(-w/2 - 4, -h/2 + 5, 4, 10); // Left front
+    ctx.fillRect(-w/2 - 4, h/2 - 15, 4, 10); // Left rear
+    ctx.fillRect(w/2, -h/2 + 5, 4, 10); // Right front
+    ctx.fillRect(w/2, h/2 - 15, 4, 10); // Right rear
+
+    // Spoiler / Front Bumper
+    ctx.fillStyle = kart.color === '#4285F4' ? '#fbbc05' : '#4CAF50';
+    ctx.fillRect(-w/2, -h/2 - 2, w, 4);
+
     ctx.restore();
   };
 
   const drawTrack = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
-    if (trackPathRef.current.length === 0) {
-        const outerPoints = [
-            { x: 0.1, y: 0.9 }, { x: 0.1, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.9 }, { x: 0.1, y: 0.9 }
-        ];
-        const innerPoints = [
-            { x: 0.3, y: 0.7 }, { x: 0.3, y: 0.3 }, { x: 0.7, y: 0.3 }, { x: 0.7, y: 0.7 }, { x: 0.3, y: 0.7 }
-        ];
+    if (!trackPathRef.current) {
+        const path = new Path2D();
+        const innerRectX = canvas.width * 0.3;
+        const innerRectY = canvas.height * 0.3;
+        const innerRectW = canvas.width * 0.4;
+        const innerRectH = canvas.height * 0.4;
 
-        const scale = (points: {x: number, y: number}[]) => points.map(p => ({x: p.x * canvas.width, y: p.y * canvas.height}));
-        const scaledOuter = scale(outerPoints);
-        const scaledInner = scale(innerPoints);
-
-        const path: TrackSegment[] = [];
-        const createPath = (points: {x: number, y: number}[], targetPath: TrackSegment[]) => {
-            for(let i = 1; i < points.length; i++) {
-                targetPath.push({x1: points[i-1].x, y1: points[i-1].y, x2: points[i].x, y2: points[i].y});
-            }
-        }
-        createPath(scaledOuter, path);
-        createPath(scaledInner, path);
-
+        // Outer boundary
+        path.rect(0, 0, canvas.width, canvas.height);
+        // Inner boundary (creates the hole)
+        path.rect(innerRectX, innerRectY, innerRectW, innerRectH);
+        
         trackPathRef.current = path;
 
-        // Create waypoints for AI
+        const scale = (points: {x: number, y: number}[]) => points.map(p => ({x: p.x * canvas.width, y: p.y * canvas.height}));
         const waypointPoints = [
            { x: 0.2, y: 0.8 }, { x: 0.2, y: 0.2 }, { x: 0.5, y: 0.2 }, { x: 0.8, y: 0.2 },
-           { x: 0.8, y: 0.5 }, { x: 0.8, y: 0.8 }, { x: 0.5, y: 0.8 }, { x: 0.2, y: 0.8 }
+           { x: 0.8, y: 0.5 }, { x: 0.8, y: 0.8 }, { x: 0.5, y: 0.8 },
         ];
-        trackWaypointsRef.current = scale(waypointPoints);
+        trackWaypointsRef.current = scale([...waypointPoints, waypointPoints[0]]); // Loop back
 
         const startY = canvas.height * 0.8;
         finishLineRef.current = { x1: canvas.width * 0.3, y1: startY, x2: canvas.width * 0.7, y2: startY };
     }
      
-    // Redraw track from cached path
-    ctx.strokeStyle = "gray";
+    // Draw asphalt
+    ctx.fillStyle = '#4A4A4A';
+    ctx.fill(trackPathRef.current, 'evenodd');
+
+    // Draw track borders
+    ctx.strokeStyle = '#BDBDBD';
     ctx.lineWidth = 10;
-    trackPathRef.current.forEach(segment => {
-        ctx.beginPath();
-        ctx.moveTo(segment.x1, segment.y1);
-        ctx.lineTo(segment.x2, segment.y2);
-        ctx.stroke();
-    })
+    const innerRectX = canvas.width * 0.3;
+    const innerRectY = canvas.height * 0.3;
+    const innerRectW = canvas.width * 0.4;
+    const innerRectH = canvas.height * 0.4;
+    ctx.strokeRect(canvas.width * 0.1, canvas.height * 0.1, canvas.width * 0.8, canvas.height * 0.8);
+    ctx.strokeRect(innerRectX, innerRectY, innerRectW, innerRectH);
     
     // Draw finish line
     if(finishLineRef.current) {
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 5;
-        ctx.setLineDash([10, 5]);
-        ctx.beginPath();
-        ctx.moveTo(finishLineRef.current.x1, finishLineRef.current.y1);
-        ctx.lineTo(finishLineRef.current.x2, finishLineRef.current.y2);
-        ctx.stroke();
-        ctx.setLineDash([]);
+        const line = finishLineRef.current;
+        const squareSize = 10;
+        for(let x = line.x1; x < line.x2; x += squareSize * 2) {
+             ctx.fillStyle = 'white';
+             ctx.fillRect(x, line.y1 - squareSize, squareSize, squareSize);
+             ctx.fillRect(x + squareSize, line.y1, squareSize, squareSize);
+             ctx.fillStyle = 'black';
+             ctx.fillRect(x, line.y1, squareSize, squareSize);
+             ctx.fillRect(x + squareSize, line.y1 - squareSize, squareSize, squareSize);
+        }
     }
   };
   
-  const pointLineDist = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if(lenSq === 0) return Math.sqrt((px - x1)**2 + (py-y1)**2);
-    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    const nearX = x1 + t * dx;
-    const nearY = y1 + t * dy;
-    return Math.sqrt((px - nearX)**2 + (py - nearY)**2);
-  }
-
   const updateAI = useCallback((kart: Kart) => {
     const waypoints = trackWaypointsRef.current;
     if (waypoints.length === 0 || kart.targetWaypoint === undefined) return;
 
     const difficultySettings = {
-        easy: { speed: 4, turnRate: 0.04, precision: 100 },
-        medium: { speed: 5, turnRate: 0.06, precision: 75 },
-        hard: { speed: 6, turnRate: 0.08, precision: 50 }
+        easy: { speed: 4.5, turnRate: 0.04, precision: 100 },
+        medium: { speed: 5.5, turnRate: 0.06, precision: 75 },
+        hard: { speed: 6.5, turnRate: 0.08, precision: 50 }
     };
     const settings = difficultySettings[aiDifficulty];
     
@@ -216,7 +218,6 @@ const GameCanvas: React.FC = () => {
     const targetAngle = Math.atan2(target.y - kart.y, target.x - kart.x) + Math.PI / 2;
     let angleDiff = targetAngle - kart.angle;
     
-    // Normalize angle difference
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
@@ -247,11 +248,11 @@ const GameCanvas: React.FC = () => {
     let p1Turn = 0;
     if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.25;
     if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
-    if (keysPressed.current[controls.p1.left]) p1Turn = -0.04;
-    if (keysPressed.current[controls.p1.right]) p1Turn = 0.04;
+    if (keysPressed.current[controls.p1.left]) p1Turn = -0.035;
+    if (keysPressed.current[controls.p1.right]) p1Turn = 0.035;
 
     p1.speed += p1Acceleration;
-    p1.speed *= 0.98; // Friction
+    p1.speed *= 0.985; // Friction
     p1.speed = Math.max(-3, Math.min(6, p1.speed));
     if (Math.abs(p1.speed) > 0.1) {
         p1.angle += p1Turn * (p1.speed / 5);
@@ -266,11 +267,11 @@ const GameCanvas: React.FC = () => {
         let p2Turn = 0;
         if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.25;
         if (keysPressed.current[controls.p2.down]) p2Acceleration = -0.2;
-        if (keysPressed.current[controls.p2.left]) p2Turn = -0.04;
-        if (keysPressed.current[controls.p2.right]) p2Turn = 0.04;
+        if (keysPressed.current[controls.p2.left]) p2Turn = -0.035;
+        if (keysPressed.current[controls.p2.right]) p2Turn = 0.035;
 
         p2.speed += p2Acceleration;
-        p2.speed *= 0.98;
+        p2.speed *= 0.985;
         p2.speed = Math.max(-3, Math.min(6, p2.speed));
         if (Math.abs(p2.speed) > 0.1) {
             p2.angle += p2Turn * (p2.speed / 5);
@@ -285,30 +286,30 @@ const GameCanvas: React.FC = () => {
         // --- Physics & Rules ---
         // Collision with track walls
         let onTrack = false;
-        const outer = [trackPathRef.current[0], trackPathRef.current[1], trackPathRef.current[2], trackPathRef.current[3]];
-        const inner = [trackPathRef.current[4], trackPathRef.current[5], trackPathRef.current[6], trackPathRef.current[7]];
-
-        if(
-          kart.x > canvas.width * 0.1 && kart.x < canvas.width * 0.9 &&
-          kart.y > canvas.height * 0.1 && kart.y < canvas.height * 0.9 &&
-          !(kart.x > canvas.width * 0.3 && kart.x < canvas.width * 0.7 &&
-          kart.y > canvas.height * 0.3 && kart.y < canvas.height * 0.7)
-        ){
-           onTrack = true;
+        
+        const ctx = canvas.getContext('2d');
+        if(ctx && trackPathRef.current) {
+          onTrack = ctx.isPointInPath(trackPathRef.current, kart.x, kart.y, 'evenodd');
         }
 
         if(!onTrack) {
-          kart.speed *= 0.9; // Slow down on grass
+          kart.speed *= 0.9;
         }
         
-        // Bouncing off walls (simplified)
-        if(kart.x < canvas.width * 0.1 || kart.x > canvas.width * 0.9 || kart.y < canvas.height * 0.1 || kart.y > canvas.height * 0.9){
-          kart.speed *= -0.5
+        // Bounce off walls (Simplified)
+        const innerRectX = canvas.width * 0.3;
+        const innerRectY = canvas.height * 0.3;
+        const innerRectW = canvas.width * 0.4;
+        const innerRectH = canvas.height * 0.4;
+        
+        // Outer walls
+        if (kart.x < canvas.width * 0.1 || kart.x > canvas.width * 0.9 || kart.y < canvas.height * 0.1 || kart.y > canvas.height * 0.9) {
+             kart.speed *= -0.5;
         }
-        if(kart.x > canvas.width * 0.3 && kart.x < canvas.width * 0.7 && kart.y > canvas.height * 0.3 && kart.y < canvas.height * 0.7){
-           kart.speed *= -0.5
+        // Inner walls
+        if (kart.x > innerRectX && kart.x < innerRectX + innerRectW && kart.y > innerRectY && kart.y < innerRectY + innerRectH) {
+            kart.speed *= -0.5;
         }
-
 
         // Collision with other kart
         const otherKart = kart === p1 ? p2 : p1;
@@ -352,8 +353,6 @@ const GameCanvas: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    resetKarts();
-
     const handleResize = () => {
       if(!canvasRef.current) return;
       const parent = canvasRef.current.parentElement;
@@ -361,7 +360,7 @@ const GameCanvas: React.FC = () => {
           canvasRef.current.width = parent.clientWidth;
           canvasRef.current.height = parent.clientHeight;
       }
-      trackPathRef.current = []; // Force track redraw
+      trackPathRef.current = null; // Force track redraw
       resetKarts();
     };
     handleResize();
@@ -418,7 +417,8 @@ const GameCanvas: React.FC = () => {
       update();
       gameLoopId.current = requestAnimationFrame(loop);
     };
-
+    
+    resetKarts();
     loop();
 
     return () => {
