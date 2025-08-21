@@ -245,13 +245,13 @@ const GameCanvas: React.FC = () => {
     const p1 = player1Ref.current;
     let p1Acceleration = 0;
     let p1Turn = 0;
-    if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.3;
+    if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.25;
     if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
-    if (keysPressed.current[controls.p1.left]) p1Turn = -0.05;
-    if (keysPressed.current[controls.p1.right]) p1Turn = 0.05;
+    if (keysPressed.current[controls.p1.left]) p1Turn = -0.04;
+    if (keysPressed.current[controls.p1.right]) p1Turn = 0.04;
 
     p1.speed += p1Acceleration;
-    p1.speed *= 0.97; // Friction
+    p1.speed *= 0.98; // Friction
     p1.speed = Math.max(-3, Math.min(6, p1.speed));
     if (Math.abs(p1.speed) > 0.1) {
         p1.angle += p1Turn * (p1.speed / 5);
@@ -264,13 +264,13 @@ const GameCanvas: React.FC = () => {
     } else {
         let p2Acceleration = 0;
         let p2Turn = 0;
-        if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.3;
+        if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.25;
         if (keysPressed.current[controls.p2.down]) p2Acceleration = -0.2;
-        if (keysPressed.current[controls.p2.left]) p2Turn = -0.05;
-        if (keysPressed.current[controls.p2.right]) p2Turn = 0.05;
+        if (keysPressed.current[controls.p2.left]) p2Turn = -0.04;
+        if (keysPressed.current[controls.p2.right]) p2Turn = 0.04;
 
         p2.speed += p2Acceleration;
-        p2.speed *= 0.97;
+        p2.speed *= 0.98;
         p2.speed = Math.max(-3, Math.min(6, p2.speed));
         if (Math.abs(p2.speed) > 0.1) {
             p2.angle += p2Turn * (p2.speed / 5);
