@@ -19,6 +19,20 @@ type Explosion = {
   alpha: number;
 };
 
+type Player = {
+    x: number;
+    y: number;
+    color: string;
+    lives: number;
+    id: number;
+}
+
+type Bullet = {
+    x: number;
+    y: number;
+    ownerId: number;
+}
+
 const AstroClash: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
 
@@ -27,7 +41,7 @@ const AstroClash: React.FC = () => {
   }, []);
 
   if (!isClient) {
-    return null; // Or a loading spinner
+    return null; 
   }
 
   return (
@@ -39,16 +53,24 @@ const AstroClash: React.FC = () => {
 
 const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const playerPosition = useRef({ x: 0, y: 0 });
-  const bullets = useRef<any[]>([]);
+  
+  const player1Ref = useRef<Player>({ id: 1, x: 0, y: 0, color: '#00FFFF', lives: 3 });
+  const player2Ref = useRef<Player | null>(null);
+  const bullets = useRef<Bullet[]>([]);
   const enemies = useRef<any[]>([]);
   const explosions = useRef<Explosion[]>([]);
   const stars = useRef<Star[]>([]);
+
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const gameLoopId = useRef<number>();
-  const [gameOver, setGameOver] = useState(true);
+  
+  const [gameState, setGameState] = useState<'menu' | 'playing' | 'over'>('menu');
+  const [gameMode, setGameMode] = useState<'solo' | 'versus' | null>(null);
   const [score, setScore] = useState(0);
-  const shootTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [winner, setWinner] = useState<string | null>(null);
+
+  const shootTimeoutP1 = useRef<NodeJS.Timeout | null>(null);
+  const shootTimeoutP2 = useRef<NodeJS.Timeout | null>(null);
   const [isMuted, setIsMuted] = useState(false);
 
   const shootSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -67,18 +89,38 @@ const GameCanvas: React.FC = () => {
     playSound(explosionSoundRef);
   }, [playSound]);
   
-  const startGame = useCallback(() => {
+  const resetGame = useCallback(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+    if (!canvas) return;
+
+    player1Ref.current = { id: 1, x: canvas.width / 3, y: canvas.height - 60, color: '#00FFFF', lives: 3 };
+
+    if (gameMode === 'versus') {
+        player2Ref.current = { id: 2, x: (canvas.width / 3) * 2, y: canvas.height - 60, color: '#FF4136', lives: 3 };
+    } else {
+        player2Ref.current = null;
     }
+
     bullets.current = [];
     enemies.current = [];
     explosions.current = [];
     keysPressed.current = {};
     setScore(0);
-    setGameOver(false);
+    setWinner(null);
+  }, [gameMode]);
+
+  const startGame = useCallback((mode: 'solo' | 'versus') => {
+    setGameMode(mode);
+    setGameState('playing');
+    // We call resetGame inside a useEffect that depends on gameMode
   }, []);
+
+  useEffect(() => {
+    if (gameState === 'playing') {
+      resetGame();
+    }
+  }, [gameState, gameMode, resetGame]);
+
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -103,26 +145,22 @@ const GameCanvas: React.FC = () => {
       }
     }
     
-    // Initial state is game over screen
-    if(gameOver) {
-        setGameOver(true);
-    }
-    
-    const drawPlayer = (ctx: CanvasRenderingContext2D) => {
+    const drawPlayer = (ctx: CanvasRenderingContext2D, player: Player) => {
+      if (player.lives <= 0) return;
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(playerPosition.current.x, playerPosition.current.y - 25);
-      ctx.lineTo(playerPosition.current.x - 20, playerPosition.current.y + 20);
-      ctx.lineTo(playerPosition.current.x + 20, playerPosition.current.y + 20);
+      ctx.moveTo(player.x, player.y - 25);
+      ctx.lineTo(player.x - 20, player.y + 20);
+      ctx.lineTo(player.x + 20, player.y + 20);
       ctx.closePath();
-      ctx.fillStyle = '#00FFFF';
+      ctx.fillStyle = player.color;
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 2;
       ctx.fill();
       ctx.stroke();
       
       ctx.beginPath();
-      ctx.arc(playerPosition.current.x, playerPosition.current.y + 5, 5, 0, Math.PI * 2);
+      ctx.arc(player.x, player.y + 5, 5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
       ctx.fill();
       ctx.restore();
@@ -130,8 +168,8 @@ const GameCanvas: React.FC = () => {
 
     const drawBullets = (ctx: CanvasRenderingContext2D) => {
         bullets.current.forEach(bullet => {
-            ctx.fillStyle = '#FFFF00';
-            ctx.shadowColor = '#FFFF00';
+            ctx.fillStyle = bullet.ownerId === 1 ? player1Ref.current.color : player2Ref.current?.color || '#FFFF00';
+            ctx.shadowColor = bullet.ownerId === 1 ? player1Ref.current.color : player2Ref.current?.color || '#FFFF00';
             ctx.shadowBlur = 10;
             ctx.fillRect(bullet.x - 2, bullet.y, 4, 15);
             ctx.shadowBlur = 0;
@@ -157,11 +195,23 @@ const GameCanvas: React.FC = () => {
         });
     };
 
-    const drawScore = (ctx: CanvasRenderingContext2D) => {
+    const drawUI = (ctx: CanvasRenderingContext2D) => {
         ctx.fillStyle = 'white';
         ctx.font = '24px "Space Grotesk", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Score: ${score}`, 20, 40);
+        if(gameMode === 'solo') {
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 20, 40);
+        } else if (gameMode === 'versus') {
+            ctx.textAlign = 'left';
+            ctx.fillStyle = player1Ref.current.color;
+            ctx.fillText(`P1 Lives: ${player1Ref.current.lives}`, 20, 40);
+            
+            ctx.textAlign = 'right';
+            if (player2Ref.current) {
+                ctx.fillStyle = player2Ref.current.color;
+                ctx.fillText(`P2 Lives: ${player2Ref.current.lives}`, canvas.width - 20, 40);
+            }
+        }
     };
 
     const drawStars = (ctx: CanvasRenderingContext2D) => {
@@ -200,9 +250,11 @@ const GameCanvas: React.FC = () => {
         });
     };
     
-    const shoot = () => {
-        if(gameOver) return;
-        bullets.current.push({ x: playerPosition.current.x, y: playerPosition.current.y - 25 });
+    const shoot = (playerId: number) => {
+        if(gameState !== 'playing') return;
+        const player = playerId === 1 ? player1Ref.current : player2Ref.current;
+        if (!player || player.lives <= 0) return;
+        bullets.current.push({ x: player.x, y: player.y - 25, ownerId: playerId });
         playSound(shootSoundRef);
     }
 
@@ -214,19 +266,19 @@ const GameCanvas: React.FC = () => {
       
       drawStars(ctx);
 
-      if (gameOver) {
-        drawScore(ctx);
+      if (gameState !== 'playing') {
         drawExplosions(ctx);
         gameLoopId.current = requestAnimationFrame(gameLoop);
         return;
       }
       
-      // Update player position
-      if (keysPressed.current['ArrowLeft'] && playerPosition.current.x > 20) {
-          playerPosition.current.x -= 7;
-      }
-      if (keysPressed.current['ArrowRight'] && playerPosition.current.x < canvasRef.current.width - 20) {
-          playerPosition.current.x += 7;
+      // Update player positions
+      if (keysPressed.current['ArrowLeft'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
+      if (keysPressed.current['ArrowRight'] && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
+
+      if(player2Ref.current) {
+          if (keysPressed.current['a'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
+          if (keysPressed.current['d'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
       }
 
       // Update bullet positions
@@ -238,59 +290,87 @@ const GameCanvas: React.FC = () => {
         }
       }
       
-      // Update enemy positions
-      for(let i = enemies.current.length - 1; i >= 0; i--) {
-        const enemy = enemies.current[i];
-        enemy.y += 2.5;
-        if(enemy.y > canvasRef.current.height) {
-            enemies.current.splice(i, 1);
+      // Update enemy positions (solo mode)
+      if (gameMode === 'solo') {
+        for(let i = enemies.current.length - 1; i >= 0; i--) {
+          const enemy = enemies.current[i];
+          enemy.y += 2.5;
+          if(enemy.y > canvasRef.current.height) {
+              enemies.current.splice(i, 1);
+          }
         }
       }
 
       // --- Collision Detection ---
-      // Check bullet-enemy collisions
-      for (let i = enemies.current.length - 1; i >= 0; i--) {
-        for (let j = bullets.current.length - 1; j >= 0; j--) {
-          const enemy = enemies.current[i];
-          const bullet = bullets.current[j];
-          if(enemy && bullet){
-            const dx = bullet.x - enemy.x;
-            const dy = bullet.y - enemy.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { 
-              createExplosion(enemy.x, enemy.y);
-              enemies.current.splice(i, 1);
-              bullets.current.splice(j, 1);
-              setScore(prev => prev + 10);
-              break; 
+      for (let i = bullets.current.length - 1; i >= 0; i--) {
+          const bullet = bullets.current[i];
+          if(!bullet) continue;
+          
+          if(gameMode === 'solo') {
+             for (let j = enemies.current.length - 1; j >= 0; j--) {
+                const enemy = enemies.current[j];
+                 if(enemy) {
+                    const dx = bullet.x - enemy.x;
+                    const dy = bullet.y - enemy.y;
+                    if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) { 
+                      createExplosion(enemy.x, enemy.y);
+                      enemies.current.splice(j, 1);
+                      bullets.current.splice(i, 1);
+                      setScore(prev => prev + 10);
+                      break; 
+                    }
+                 }
+            }
+          } else { // versus mode
+            const targetPlayer = bullet.ownerId === 1 ? player2Ref.current : player1Ref.current;
+            if(targetPlayer && targetPlayer.lives > 0) {
+                const dx = bullet.x - targetPlayer.x;
+                const dy = bullet.y - targetPlayer.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
+                    createExplosion(targetPlayer.x, targetPlayer.y);
+                    targetPlayer.lives--;
+                    bullets.current.splice(i, 1);
+                    if(targetPlayer.lives <= 0) {
+                        setWinner(bullet.ownerId === 1 ? 'Player 1' : 'Player 2');
+                        playSound(gameOverSoundRef);
+                        setGameState('over');
+                    }
+                    break;
+                }
+            }
+          }
+      }
+      
+      if(gameMode === 'solo') {
+        for (const enemy of enemies.current) {
+          if(player1Ref.current.lives > 0) {
+            const dx = player1Ref.current.x - enemy.x;
+            const dy = player1Ref.current.y - enemy.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
+                createExplosion(player1Ref.current.x, player1Ref.current.y);
+                player1Ref.current.lives = 0;
+                playSound(gameOverSoundRef);
+                setGameState('over');
+                break;
             }
           }
         }
       }
-      
-      // Check player-enemy collision
-      for (const enemy of enemies.current) {
-        const dx = playerPosition.current.x - enemy.x;
-        const dy = playerPosition.current.y - enemy.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
-            createExplosion(playerPosition.current.x, playerPosition.current.y);
-            playSound(gameOverSoundRef);
-            setGameOver(true);
-            break;
-        }
-      }
+
 
       // --- Drawing ---
-      drawPlayer(ctx);
+      drawPlayer(ctx, player1Ref.current);
+      if(player2Ref.current) drawPlayer(ctx, player2Ref.current);
       drawBullets(ctx);
-      drawEnemies(ctx);
+      if(gameMode === 'solo') drawEnemies(ctx);
       drawExplosions(ctx);
-      drawScore(ctx);
+      drawUI(ctx);
 
       gameLoopId.current = requestAnimationFrame(gameLoop);
     };
 
     const spawnEnemy = () => {
-        if (canvasRef.current && !gameOver) {
+        if (canvasRef.current && gameState === 'playing' && gameMode === 'solo') {
             const x = Math.random() * (canvasRef.current.width - 40) + 20;
             enemies.current.push({ x, y: 0 });
         }
@@ -303,88 +383,86 @@ const GameCanvas: React.FC = () => {
             canvasHeight = window.innerHeight;
             canvas.width = canvasWidth;
             canvas.height = canvasHeight;
-            if (!gameOver) {
-                playerPosition.current = { x: canvas.width / 2, y: canvas.height - 60 };
+            if(gameState === 'playing') {
+                resetGame();
             }
         }
     }
-
-    const handleTouchMove = (e: TouchEvent) => {
-        e.preventDefault();
-        if (gameOver) return;
-        const canvas = canvasRef.current;
-        if (e.touches.length > 0 && canvas) {
-            const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
-            let newX = touch.clientX - rect.left;
-            if (newX < 20) newX = 20;
-            if (newX > canvas.width - 20) newX = canvas.width - 20;
-            playerPosition.current.x = newX;
-        }
-    };
-    
-    let lastTouchTime = 0;
-    const handleTouchStart = (e: TouchEvent) => {
-        e.preventDefault();
-        if (gameOver) return;
-        const now = new Date().getTime();
-        // Simple debounce to prevent rapid fire on one tap
-        if (now - lastTouchTime < 300) { 
-            return;
-        }
-        lastTouchTime = now;
-        if (e.touches.length > 0) {
-             shoot();
-        }
-    };
     
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (gameOver && e.key !== 'Enter') return;
-        if (e.key === 'Enter' && gameOver) {
-            startGame();
-            return;
-        }
-        keysPressed.current[e.key] = true;
-        if ((e.key === ' ' || e.key === 'Spacebar') && !shootTimeout.current) {
+        if (gameState !== 'playing') return;
+        keysPressed.current[e.key.toLowerCase()] = true;
+
+        // Player 1 Shoot
+        if ((e.key === ' ' || e.key === 'Spacebar') && !shootTimeoutP1.current) {
             e.preventDefault();
-            shoot();
-            shootTimeout.current = setTimeout(() => {
-                shootTimeout.current = null;
-            }, 150);
+            shoot(1);
+            shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null; }, 200);
+        }
+        // Player 2 Shoot
+        if (e.key === 'Shift' && !shootTimeoutP2.current) {
+             e.preventDefault();
+             shoot(2);
+             shootTimeoutP2.current = setTimeout(() => { shootTimeoutP2.current = null; }, 200);
         }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-        keysPressed.current[e.key] = false;
+        keysPressed.current[e.key.toLowerCase()] = false;
     };
 
     window.addEventListener('resize', handleResize);
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    const enemyInterval = setInterval(spawnEnemy, 800);
+    const enemyInterval = setInterval(spawnEnemy, 1200);
     
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
     return () => {
-        if (gameLoopId.current) {
-            cancelAnimationFrame(gameLoopId.current);
-        }
-        if (shootTimeout.current) {
-            clearTimeout(shootTimeout.current);
-        }
+        if (gameLoopId.current) cancelAnimationFrame(gameLoopId.current);
+        if (shootTimeoutP1.current) clearTimeout(shootTimeoutP1.current);
+        if (shootTimeoutP2.current) clearTimeout(shootTimeoutP2.current);
         window.removeEventListener('resize', handleResize);
-        if (canvasRef.current) {
-            canvasRef.current.removeEventListener('touchmove', handleTouchMove);
-            canvasRef.current.removeEventListener('touchstart', handleTouchStart);
-        }
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
     };
-  }, [gameOver, score, startGame, playSound, createExplosion]);
+  }, [gameState, score, playSound, createExplosion, resetGame, gameMode]);
+
+  const renderMenu = () => (
+    <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
+        <h2 className="text-6xl font-bold mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>Astro Clash</h2>
+        <div className="flex flex-col sm:flex-row gap-4">
+            <Button onClick={() => startGame('solo')} size="lg" variant="secondary" className="text-lg">
+                Solo Mission
+            </Button>
+            <Button onClick={() => startGame('versus')} size="lg" variant="secondary" className="text-lg">
+                Versus Mode
+            </Button>
+        </div>
+    </div>
+  );
+
+  const renderGameOver = () => {
+    let title = "Game Over";
+    let subTitle = `Your Score: ${score}`;
+
+    if (gameMode === 'versus') {
+        title = winner ? `${winner} Wins!` : "It's a Draw!";
+        subTitle = `P1 Lives: ${player1Ref.current.lives} | P2 Lives: ${player2Ref.current?.lives || 0}`;
+    }
+
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
+            <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{title}</h2>
+            <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{subTitle}</p>
+            <Button onClick={() => setGameState('menu')} size="lg" variant="secondary" className="text-lg">
+                Main Menu
+            </Button>
+        </div>
+    );
+  }
 
   return (
     <>
@@ -399,17 +477,13 @@ const GameCanvas: React.FC = () => {
       </div>
       
       <canvas ref={canvasRef} className="touch-none w-full h-full" />
-      {gameOver && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center text-white z-10 animate-fade-in">
-          <h2 className="text-6xl font-bold mb-4" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? "Game Over" : "Astro Clash"}</h2>
-          <p className="text-3xl mb-8" style={{ fontFamily: '"Space Grotesk", sans-serif' }}>{score > 0 ? `Your Score: ${score}` : "Use Arrow Keys to Move, Space to Shoot"}</p>
-          <Button onClick={startGame} size="lg" variant="secondary" className="text-lg">
-            {score > 0 ? "Play Again" : "Start Game"}
-          </Button>
-        </div>
-      )}
+
+      {gameState === 'menu' && renderMenu()}
+      {gameState === 'over' && renderGameOver()}
     </>
   )
 };
 
 export default AstroClash;
+
+    
