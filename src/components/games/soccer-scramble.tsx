@@ -120,7 +120,7 @@ const GameCanvas: React.FC = () => {
     setGameState('playing');
     resetPositions(canvas);
     setCountdown(3);
-    countdownTimer.current = 3;
+    countdownTimer.current = 3.99;
   }, [resetPositions]);
 
   useEffect(() => {
@@ -384,6 +384,7 @@ const GameCanvas: React.FC = () => {
 
     const draw = (timestamp: number) => {
         if (!canvasRef.current || !ctx) return;
+        if (!lastTime) lastTime = timestamp;
         
         const deltaTime = timestamp - lastTime;
         lastTime = timestamp;
@@ -471,7 +472,6 @@ const GameCanvas: React.FC = () => {
     }
 
     const gameLoop = (timestamp: number) => {
-        if (!lastTime) lastTime = timestamp;
         update();
         draw(timestamp);
         gameLoopId.current = requestAnimationFrame(gameLoop);
@@ -503,5 +503,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default SoccerScramble;
-
-    

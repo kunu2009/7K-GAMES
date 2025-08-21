@@ -35,6 +35,14 @@ const games = [
     image: "https://placehold.co/600x400.png",
     hint: "soccer physics"
   },
+  {
+    slug: "goblin-gold-grab",
+    title: "Goblin Gold Grab",
+    description: "An endless runner where you grab as much gold as you can.",
+    players: "1",
+    image: "https://placehold.co/600x400.png",
+    hint: "goblin fantasy"
+  },
 ];
 
 export default function Home() {

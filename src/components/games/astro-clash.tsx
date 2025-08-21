@@ -47,12 +47,14 @@ type Asteroid = {
 }
 
 // For mobile touch controls
-type TouchState = {
-    touching: boolean;
-    x: number;
-    y: number;
+type Joystick = {
+    base: { x: number, y: number, radius: number };
+    stick: { x: number, y: number, radius: number };
+    active: boolean;
+    touchId: number | null;
     isShooting: boolean;
 };
+
 
 const AstroClash: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -100,8 +102,8 @@ const GameCanvas: React.FC = () => {
   const explosionSoundRef = useRef<HTMLAudioElement | null>(null);
   const gameOverSoundRef = useRef<HTMLAudioElement | null>(null);
 
-  const touchStateP1 = useRef<TouchState>({ touching: false, x: 0, y: 0, isShooting: false });
-  const touchStateP2 = useRef<TouchState>({ touching: false, x: 0, y: 0, isShooting: false });
+  const joystick1Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 50}, stick: {x:0, y:0, radius: 25}, active: false, touchId: null, isShooting: false });
+  const joystick2Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 50}, stick: {x:0, y:0, radius: 25}, active: false, touchId: null, isShooting: false });
 
 
   const playSound = useCallback((soundRef: React.RefObject<HTMLAudioElement>) => {
@@ -304,6 +306,24 @@ const GameCanvas: React.FC = () => {
         timeoutRef.current = setTimeout(() => { timeoutRef.current = null; }, 200);
     }
 
+    const drawJoysticks = (ctx: CanvasRenderingContext2D) => {
+        [joystick1Ref.current, joystick2Ref.current].forEach(joy => {
+            if (!joy.active) return;
+            ctx.save();
+            // Base
+            ctx.beginPath();
+            ctx.arc(joy.base.x, joy.base.y, joy.base.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+            ctx.fill();
+            // Stick
+            ctx.beginPath();
+            ctx.arc(joy.stick.x, joy.stick.y, joy.stick.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+            ctx.restore();
+        })
+    }
+
     const gameLoop = () => {
       if (!canvasRef.current) return;
       const ctx = canvasRef.current.getContext('2d');
@@ -320,17 +340,19 @@ const GameCanvas: React.FC = () => {
       
       // Update player positions
       if (isMobile) {
-        if (touchStateP1.current.touching) {
-            const dx = touchStateP1.current.x - player1Ref.current.x;
-            if (Math.abs(dx) > 5) player1Ref.current.x += Math.sign(dx) * 7;
+        const joy1 = joystick1Ref.current;
+        if (joy1.active) {
+            const dx = joy1.stick.x - joy1.base.x;
+            player1Ref.current.x += dx / joy1.base.radius * 7;
+            if (joy1.isShooting) shoot(1);
         }
-        if (touchStateP1.current.isShooting) shoot(1);
 
-        if (player2Ref.current && touchStateP2.current.touching) {
-            const dx = touchStateP2.current.x - player2Ref.current.x;
-            if (Math.abs(dx) > 5) player2Ref.current.x += Math.sign(dx) * 7;
+        const joy2 = joystick2Ref.current;
+        if (player2Ref.current && joy2.active) {
+            const dx = joy2.stick.x - joy2.base.x;
+            player2Ref.current.x += dx / joy2.base.radius * 7;
+            if (joy2.isShooting) shoot(2);
         }
-        if (player2Ref.current && touchStateP2.current.isShooting) shoot(2);
 
       } else { // Keyboard controls
           if (keysPressed.current['arrowleft'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
@@ -338,9 +360,9 @@ const GameCanvas: React.FC = () => {
           if (keysPressed.current[' '] || keysPressed.current['arrowup']) shoot(1);
 
           if(player2Ref.current) {
-              if (keysPressed.current['a'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
-              if (keysPressed.current['d'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
-              if (keysPressed.current['shift'] || keysPressed.current['w']) shoot(2);
+              if ((keysPressed.current['a'] || keysPressed.current['A']) && player2Ref.current.x > 20) player2Ref.current.x -= 7;
+              if ((keysPressed.current['d'] || keysPressed.current['D']) && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
+              if (keysPressed.current['shift'] || keysPressed.current['w'] || keysPressed.current['W']) shoot(2);
           }
       }
 
@@ -502,6 +524,7 @@ const GameCanvas: React.FC = () => {
       else drawAsteroids(ctx);
       drawExplosions(ctx);
       drawUI(ctx);
+      if (isMobile) drawJoysticks(ctx);
 
       gameLoopId.current = requestAnimationFrame(gameLoop);
     };
@@ -554,18 +577,15 @@ const GameCanvas: React.FC = () => {
         keysPressed.current[key] = true;
         
         if (gameMode === 'versus') {
-            // P1 shoot is `space` or `arrowup`
             if (key === ' ' || key === 'arrowup') {
                  e.preventDefault();
                  shoot(1);
             }
-             // P2 shoot is `shift` or `w`
             if(key === 'shift' || key === 'w') {
                  e.preventDefault();
                  shoot(2);
             }
         } else {
-            // Solo mode shoot
              if (key === ' ' || key === 'arrowup') {
                  e.preventDefault();
                  shoot(1);
@@ -577,60 +597,74 @@ const GameCanvas: React.FC = () => {
         keysPressed.current[e.key.toLowerCase()] = false;
     };
     
-    const handleTouchEvent = (e: TouchEvent) => {
+    const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        
-        // Reset states
-        touchStateP1.current = { ...touchStateP1.current, touching: false, isShooting: false };
-        if(player2Ref.current) {
-            touchStateP2.current = { ...touchStateP2.current, touching: false, isShooting: false };
+        const touches = e.changedTouches;
+        for(let i=0; i < touches.length; i++) {
+            const touch = touches[i];
+            const joy = touch.clientX < canvas.width / 2 ? joystick1Ref.current : joystick2Ref.current;
+            joy.active = true;
+            joy.touchId = touch.identifier;
+            joy.base.x = touch.clientX;
+            joy.base.y = touch.clientY;
+            joy.stick.x = touch.clientX;
+            joy.stick.y = touch.clientY;
+            joy.isShooting = true;
         }
+    }
+    
+    const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        const touches = e.changedTouches;
+        for(let i=0; i < touches.length; i++) {
+            const touch = touches[i];
+            let joy;
+            if (touch.identifier === joystick1Ref.current.touchId) joy = joystick1Ref.current;
+            else if (touch.identifier === joystick2Ref.current.touchId) joy = joystick2Ref.current;
+            else continue;
 
-        for (let i = 0; i < e.touches.length; i++) {
-            const touch = e.touches[i];
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
+            const dx = touch.clientX - joy.base.x;
+            const dy = touch.clientY - joy.base.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
             
-            const shootZoneHeight = canvas.height * 0.2; // Top 20% is for shooting
-
-            if (gameMode === 'solo') {
-                 if (y < shootZoneHeight) {
-                    touchStateP1.current.isShooting = true;
-                } else {
-                    touchStateP1.current.touching = true;
-                    touchStateP1.current.x = x;
-                }
-            } else { // Versus mode
-                if (x < canvas.width / 2) { // Left side of screen for P1
-                     if (y < shootZoneHeight) {
-                        touchStateP1.current.isShooting = true;
-                    } else {
-                        touchStateP1.current.touching = true;
-                        touchStateP1.current.x = x;
-                    }
-                } else { // Right side for P2
-                    if (y < shootZoneHeight) {
-                        touchStateP2.current.isShooting = true;
-                    } else {
-                        touchStateP2.current.touching = true;
-                        touchStateP2.current.x = x;
-                    }
-                }
+            if (dist > joy.base.radius) {
+                joy.stick.x = joy.base.x + (dx / dist) * joy.base.radius;
+                joy.stick.y = joy.base.y + (dy / dist) * joy.base.radius;
+            } else {
+                joy.stick.x = touch.clientX;
+                joy.stick.y = touch.clientY;
             }
         }
-    };
+    }
+    
+    const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        const touches = e.changedTouches;
+        for (let i = 0; i < touches.length; i++) {
+            const touch = touches[i];
+            if (touch.identifier === joystick1Ref.current.touchId) {
+                joystick1Ref.current.active = false;
+                joystick1Ref.current.touchId = null;
+                joystick1Ref.current.isShooting = false;
+            } else if (touch.identifier === joystick2Ref.current.touchId) {
+                joystick2Ref.current.active = false;
+                joystick2Ref.current.touchId = null;
+                joystick2Ref.current.isShooting = false;
+            }
+        }
+    }
+
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     
     // Touch listeners for mobile
-    canvas.addEventListener('touchstart', handleTouchEvent);
-    canvas.addEventListener('touchmove', handleTouchEvent);
-    canvas.addEventListener('touchend', handleTouchEvent);
+    if (isMobile) {
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    }
 
     const enemyInterval = setInterval(spawnEnemy, 1200);
     const asteroidInterval = setInterval(spawnAsteroid, 2500);
@@ -646,10 +680,10 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
         clearInterval(asteroidInterval);
-        if(canvas) {
-            canvas.removeEventListener('touchstart', handleTouchEvent);
-            canvas.removeEventListener('touchmove', handleTouchEvent);
-            canvas.removeEventListener('touchend', handleTouchEvent);
+        if(canvas && isMobile) {
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
         }
     };
   }, [gameState, score, playSound, createExplosion, resetGame, gameMode, isMobile]);
@@ -668,9 +702,9 @@ const GameCanvas: React.FC = () => {
         { isMobile && (
             <div className="mt-8 text-center text-muted-foreground p-4 rounded-md bg-background/20 max-w-sm">
                 <h3 className="font-bold text-lg mb-2 text-white">Mobile Controls</h3>
-                <p><span className="font-bold text-cyan-400">P1 (Solo/Versus):</span> Left side of screen.</p>
-                 <p><span className="font-bold text-red-500">P2 (Versus):</span> Right side of screen.</p>
-                <p className="mt-2">Drag bottom 80% to move. Tap top 20% to shoot.</p>
+                <p><span className="font-bold text-cyan-400">P1:</span> Left side of screen is your joystick.</p>
+                 <p><span className="font-bold text-red-500">P2:</span> Right side of screen is your joystick.</p>
+                <p className="mt-2">Movement also shoots automatically.</p>
             </div>
         )}
          { !isMobile && (
@@ -731,5 +765,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default AstroClash;
-
-    

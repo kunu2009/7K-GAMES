@@ -78,9 +78,12 @@ const GameCanvas: React.FC = () => {
 
     tilesRef.current = [];
     // Starting platform
-    for(let i=0; i< canvas.width / TILE_WIDTH + 1; i++) {
+    const startPlatformWidth = Math.max(100, canvas.width * 0.6);
+    const numStartTiles = Math.ceil(startPlatformWidth / TILE_WIDTH);
+    const startX = (canvas.width - numStartTiles * TILE_WIDTH) / 2;
+    for(let i=0; i< numStartTiles; i++) {
         tilesRef.current.push({
-            x: i * TILE_WIDTH,
+            x: startX + i * TILE_WIDTH,
             y: canvas.height - 40,
             width: TILE_WIDTH,
             height: TILE_HEIGHT

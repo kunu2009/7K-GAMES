@@ -6,6 +6,7 @@ import AstroClash from '@/components/games/astro-clash';
 import BuildNBounce from '@/components/games/build-n-bounce';
 import KartHavoc from '@/components/games/kart-havoc';
 import SoccerScramble from '@/components/games/soccer-scramble';
+import GoblinGoldGrab from '@/components/games/goblin-gold-grab';
 import { useScreen } from '@/hooks/use-screen';
 import { Button } from '@/components/ui/button';
 import { Maximize, Minimize } from 'lucide-react';
@@ -30,6 +31,11 @@ const games = [
     slug: 'soccer-scramble',
     title: 'Soccer Scramble',
     component: <SoccerScramble />,
+  },
+  {
+    slug: 'goblin-gold-grab',
+    title: 'Goblin Gold Grab',
+    component: <GoblinGoldGrab />,
   },
 ];
 

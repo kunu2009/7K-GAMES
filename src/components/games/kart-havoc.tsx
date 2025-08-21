@@ -164,7 +164,7 @@ const GameCanvas: React.FC = () => {
 
   const drawTrack = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     const isPortrait = canvas.height > canvas.width;
-    const trackWidth = isMobile ? 120 : 180;
+    const trackWidth = isMobile ? 140 : 180;
     const marginX = isPortrait ? 20 : canvas.width * 0.1;
     const marginY = isPortrait ? 100 : canvas.height * 0.1;
 
@@ -253,9 +253,9 @@ const GameCanvas: React.FC = () => {
     if (waypoints.length === 0 || kart.targetWaypoint === undefined) return;
 
     const difficultySettings = {
-        easy: { speed: 4.5, turnRate: 0.04, precision: 100 },
-        medium: { speed: 5.5, turnRate: 0.06, precision: 75 },
-        hard: { speed: 6.5, turnRate: 0.08, precision: 50 }
+        easy: { speed: 4.0, turnRate: 0.04, precision: 100 },
+        medium: { speed: 5.0, turnRate: 0.06, precision: 75 },
+        hard: { speed: 6.0, turnRate: 0.08, precision: 50 }
     };
     const settings = difficultySettings[aiDifficulty];
     
@@ -277,9 +277,9 @@ const GameCanvas: React.FC = () => {
     while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
     while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-    if (angleDiff > 0.1) {
+    if (angleDiff > 0.05) {
         kart.angle += settings.turnRate;
-    } else if (angleDiff < -0.1) {
+    } else if (angleDiff < -0.05) {
         kart.angle -= settings.turnRate;
     }
     
@@ -304,23 +304,23 @@ const GameCanvas: React.FC = () => {
     let p2Acceleration = 0;
     let p2Turn = 0;
 
-    const maxSpeed = isMobile ? 5 : 6;
+    const maxSpeed = isMobile ? 4.5 : 6;
 
     if (isMobile) {
         const joy1 = joystick1Ref.current;
         if(joy1.active) {
             const dx = joy1.stick.x - joy1.base.x;
             const dy = joy1.stick.y - joy1.base.y;
-            p1Turn = dx / joy1.base.radius * 0.05;
-            p1Acceleration = -dy / joy1.base.radius * 0.3;
+            p1Turn = dx / joy1.base.radius * 0.06;
+            p1Acceleration = -dy / joy1.base.radius * 0.25;
         }
         if(gameMode === '2p'){
             const joy2 = joystick2Ref.current;
              if(joy2.active) {
                 const dx = joy2.stick.x - joy2.base.x;
                 const dy = joy2.stick.y - joy2.base.y;
-                p2Turn = dx / joy2.base.radius * 0.05;
-                p2Acceleration = -dy / joy2.base.radius * 0.3;
+                p2Turn = dx / joy2.base.radius * 0.06;
+                p2Acceleration = -dy / joy2.base.radius * 0.25;
             }
         }
     } 
@@ -611,5 +611,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default KartHavoc;
-
-    
