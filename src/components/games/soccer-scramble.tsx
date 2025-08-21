@@ -62,16 +62,20 @@ const GameCanvas: React.FC = () => {
     ballRef.current = { ...ballRef.current, x: canvas.width / 2 - 15, y: canvas.height / 2, vx: 0, vy: 0 };
   }, []);
 
-  const startGame = useCallback(() => {
-    const canvas = canvasRef.current;
-    if(!canvas) return;
-
-    setScores({ player1: 0, player2: 0 });
-    setLastGoal(null);
-    setGameState('playing');
+  const startCountdown = useCallback(() => {
+    if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+    }
     setCountdown(3);
-    resetPositions(canvas);
-  }, [resetPositions]);
+    countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+            if (prev - 1 <= 0) {
+                clearInterval(countdownIntervalRef.current);
+            }
+            return prev - 1;
+        });
+    }, 1000);
+  }, []);
 
   const handleGoal = useCallback((scoringPlayer: 'player1' | 'player2') => {
     const canvas = canvasRef.current;
@@ -89,33 +93,24 @@ const GameCanvas: React.FC = () => {
             setGameState('over');
         } else {
             setLastGoal(scoringPlayer === 'player1' ? 'Blue Scores!' : 'Red Scores!');
-            setCountdown(3);
             resetPositions(canvas);
+            startCountdown();
             setTimeout(() => setLastGoal(null), 2000);
         }
         return newScores;
     });
-  }, [resetPositions]);
-
-  useEffect(() => {
-    if (gameState === 'playing' && countdown > 0) {
-      if(countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev - 1 <= 0) {
-            if(countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
+  }, [resetPositions, startCountdown]);
   
-    return () => {
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
-  }, [gameState, countdown]);
+  const startGame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+
+    setScores({ player1: 0, player2: 0 });
+    setLastGoal(null);
+    setGameState('playing');
+    resetPositions(canvas);
+    startCountdown();
+  }, [resetPositions, startCountdown]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -128,10 +123,8 @@ const GameCanvas: React.FC = () => {
         canvas.height = window.innerHeight;
         if (gameState !== 'playing') {
             setGameState('waiting');
-            resetPositions(canvas);
-        } else {
-            resetPositions(canvas);
         }
+        resetPositions(canvas);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -167,7 +160,6 @@ const GameCanvas: React.FC = () => {
       const entities = [player1Ref.current, player2Ref.current, ballRef.current];
       const player1 = player1Ref.current;
       const player2 = player2Ref.current;
-      const ball = ballRef.current;
 
       // Player 1 controls
       if (keysPressed.current['a']) player1.vx -= MOVE_SPEED;
@@ -263,10 +255,10 @@ const GameCanvas: React.FC = () => {
 
                 if (speed < 0) {
                     const impulse = 2 * speed / totalMass;
-                    body1.vx -= impulse * body2.mass * normalX;
-                    body1.vy -= impulse * body2.mass * normalY;
-                    body2.vx += impulse * body1.mass * normalX;
-                    body2.vy += impulse * body1.mass * normalY;
+                    body1.vx -= impulse * body2.mass * normalX * 1.1; // Add a bit of extra "kick"
+                    body1.vy -= impulse * body2.mass * normalY * 1.1;
+                    body2.vx += impulse * body1.mass * normalX * 1.1;
+                    body2.vy += impulse * body1.mass * normalY * 1.1;
                 }
             }
         }
@@ -275,6 +267,7 @@ const GameCanvas: React.FC = () => {
       // Goal check
       const goalHeight = 150;
       const goalWidth = 20;
+      const ball = ballRef.current;
       // Player 2 scores (left goal)
       if (ball.x < goalWidth && ball.y > canvas.height - goalHeight) {
         handleGoal('player2');
@@ -285,6 +278,49 @@ const GameCanvas: React.FC = () => {
       }
     };
     
+    const drawPlayer = (ctx: CanvasRenderingContext2D, player: Body) => {
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        
+        // Body
+        ctx.fillStyle = player.color;
+        ctx.fillRect(0, 0, player.width, player.height);
+        
+        // Eyes
+        ctx.fillStyle = 'white';
+        ctx.fillRect(player.width * 0.2, player.height * 0.2, 8, 8);
+        ctx.fillRect(player.width * 0.6, player.height * 0.2, 8, 8);
+        ctx.fillStyle = 'black';
+        ctx.fillRect(player.width * 0.2 + 2, player.height * 0.2 + 2, 4, 4);
+        ctx.fillRect(player.width * 0.6 + 2, player.height * 0.2 + 2, 4, 4);
+        
+        ctx.restore();
+    }
+    
+    const drawBall = (ctx: CanvasRenderingContext2D, ball: Body) => {
+        ctx.save();
+        ctx.translate(ball.x + ball.width/2, ball.y + ball.height/2);
+        
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(0, 0, ball.width/2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = 'black';
+        for(let i=0; i<6; i++) {
+            ctx.rotate(Math.PI / 3);
+            ctx.beginPath();
+            ctx.arc(ball.width/3, 0, ball.width/6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+
+
     const draw = () => {
         if (!canvasRef.current || !ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -312,24 +348,9 @@ const GameCanvas: React.FC = () => {
         ctx.stroke();
 
         // Draw entities
-        const entities = [player1Ref.current, player2Ref.current];
-        entities.forEach(body => {
-            ctx.fillStyle = body.color;
-            ctx.fillRect(body.x, body.y, body.width, body.height);
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(body.x, body.y, body.width, body.height);
-        });
-        
-        // Draw ball
-        const ball = ballRef.current;
-        ctx.beginPath();
-        ctx.arc(ball.x + ball.width / 2, ball.y + ball.height / 2, ball.width / 2, 0, Math.PI * 2);
-        ctx.fillStyle = ball.color;
-        ctx.fill();
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        drawPlayer(ctx, player1Ref.current);
+        drawPlayer(ctx, player2Ref.current);
+        drawBall(ctx, ballRef.current);
 
         // Draw scores
         ctx.fillStyle = 'white';
@@ -338,7 +359,7 @@ const GameCanvas: React.FC = () => {
         ctx.fillText(`${scores.player1} - ${scores.player2}`, canvas.width / 2, 80);
 
         if (lastGoal) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
             ctx.font = 'bold 80px "Space Grotesk", sans-serif';
             ctx.fillText(lastGoal, canvas.width / 2, canvas.height / 2);
         }
