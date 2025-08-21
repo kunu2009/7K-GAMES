@@ -365,5 +365,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default SoccerScramble;
-
-    

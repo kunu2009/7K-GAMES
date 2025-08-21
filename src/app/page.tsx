@@ -27,6 +27,14 @@ const games = [
     image: "https://placehold.co/600x400.png",
     hint: "racing cars"
   },
+  {
+    slug: "soccer-scramble",
+    title: "Soccer Scramble",
+    description: "A frantic physics-based soccer game for 2 players.",
+    players: "2",
+    image: "https://placehold.co/600x400.png",
+    hint: "soccer physics"
+  },
 ];
 
 export default function Home() {

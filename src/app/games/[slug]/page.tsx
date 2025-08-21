@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import AstroClash from '@/components/games/astro-clash';
 import BuildNBounce from '@/components/games/build-n-bounce';
 import KartHavoc from '@/components/games/kart-havoc';
+import SoccerScramble from '@/components/games/soccer-scramble';
 import { useScreen } from '@/hooks/use-screen';
 import { Button } from '@/components/ui/button';
 import { Maximize, Minimize } from 'lucide-react';
@@ -24,6 +25,11 @@ const games = [
     slug: 'kart-havoc',
     title: 'Kart Havoc',
     component: <KartHavoc />,
+  },
+  {
+    slug: 'soccer-scramble',
+    title: 'Soccer Scramble',
+    component: <SoccerScramble />,
   },
 ];
 
