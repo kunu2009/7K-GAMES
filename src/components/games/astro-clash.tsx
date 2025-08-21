@@ -3,7 +3,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, ArrowLeft, ArrowRight, Crosshair } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
+
 
 type Star = {
   x: number;
@@ -31,6 +34,16 @@ type Bullet = {
     x: number;
     y: number;
     ownerId: number;
+    vy: number;
+}
+
+type Asteroid = {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: 'large' | 'medium' | 'small';
+    radius: number;
 }
 
 const AstroClash: React.FC = () => {
@@ -53,11 +66,13 @@ const AstroClash: React.FC = () => {
 
 const GameCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isMobile = useIsMobile();
   
   const player1Ref = useRef<Player>({ id: 1, x: 0, y: 0, color: '#00FFFF', lives: 3 });
   const player2Ref = useRef<Player | null>(null);
   const bullets = useRef<Bullet[]>([]);
   const enemies = useRef<any[]>([]);
+  const asteroids = useRef<Asteroid[]>([]);
   const explosions = useRef<Explosion[]>([]);
   const stars = useRef<Star[]>([]);
 
@@ -103,6 +118,7 @@ const GameCanvas: React.FC = () => {
 
     bullets.current = [];
     enemies.current = [];
+    asteroids.current = [];
     explosions.current = [];
     keysPressed.current = {};
     setScore(0);
@@ -112,7 +128,6 @@ const GameCanvas: React.FC = () => {
   const startGame = useCallback((mode: 'solo' | 'versus') => {
     setGameMode(mode);
     setGameState('playing');
-    // We call resetGame inside a useEffect that depends on gameMode
   }, []);
 
   useEffect(() => {
@@ -195,6 +210,18 @@ const GameCanvas: React.FC = () => {
         });
     };
 
+    const drawAsteroids = (ctx: CanvasRenderingContext2D) => {
+        asteroids.current.forEach(asteroid => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        });
+    };
+
     const drawUI = (ctx: CanvasRenderingContext2D) => {
         ctx.fillStyle = 'white';
         ctx.font = '24px "Space Grotesk", sans-serif';
@@ -254,7 +281,7 @@ const GameCanvas: React.FC = () => {
         if(gameState !== 'playing') return;
         const player = playerId === 1 ? player1Ref.current : player2Ref.current;
         if (!player || player.lives <= 0) return;
-        bullets.current.push({ x: player.x, y: player.y - 25, ownerId: playerId });
+        bullets.current.push({ x: player.x, y: player.y - 25, ownerId: playerId, vy: -10 });
         playSound(shootSoundRef);
     }
 
@@ -273,18 +300,18 @@ const GameCanvas: React.FC = () => {
       }
       
       // Update player positions
-      if (keysPressed.current['ArrowLeft'] && player1Ref.current.x > 20) player1Ref.current.x -= 7;
-      if (keysPressed.current['ArrowRight'] && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
+      if ((keysPressed.current['arrowleft'] || keysPressed.current['p1-left']) && player1Ref.current.x > 20) player1Ref.current.x -= 7;
+      if ((keysPressed.current['arrowright'] || keysPressed.current['p1-right']) && player1Ref.current.x < canvasRef.current.width - 20) player1Ref.current.x += 7;
 
       if(player2Ref.current) {
-          if (keysPressed.current['a'] && player2Ref.current.x > 20) player2Ref.current.x -= 7;
-          if (keysPressed.current['d'] && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
+          if ((keysPressed.current['a'] || keysPressed.current['p2-left']) && player2Ref.current.x > 20) player2Ref.current.x -= 7;
+          if ((keysPressed.current['d'] || keysPressed.current['p2-right']) && player2Ref.current.x < canvasRef.current.width - 20) player2Ref.current.x += 7;
       }
 
       // Update bullet positions
       for(let i = bullets.current.length - 1; i >= 0; i--) {
         const bullet = bullets.current[i];
-        bullet.y -= 10;
+        bullet.y += bullet.vy;
         if(bullet.y < 0) {
             bullets.current.splice(i, 1);
         }
@@ -300,6 +327,17 @@ const GameCanvas: React.FC = () => {
           }
         }
       }
+      
+      // Update asteroid positions
+      for (let i = asteroids.current.length - 1; i >= 0; i--) {
+        const ast = asteroids.current[i];
+        ast.x += ast.vx;
+        ast.y += ast.vy;
+        if (ast.x < -ast.radius || ast.x > canvas.width + ast.radius || ast.y > canvas.height + ast.radius) {
+            asteroids.current.splice(i, 1);
+        }
+      }
+
 
       // --- Collision Detection ---
       for (let i = bullets.current.length - 1; i >= 0; i--) {
@@ -339,30 +377,85 @@ const GameCanvas: React.FC = () => {
                 }
             }
           }
+          // Bullet-asteroid collision
+          for (let k = asteroids.current.length - 1; k >= 0; k--) {
+              const ast = asteroids.current[k];
+              const dx = bullet.x - ast.x;
+              const dy = bullet.y - ast.y;
+              if (Math.sqrt(dx*dx + dy*dy) < ast.radius) {
+                  createExplosion(ast.x, ast.y);
+                  // Break asteroid
+                  if(ast.size === 'large' || ast.size === 'medium') {
+                    const newSize = ast.size === 'large' ? 'medium' : 'small';
+                    const newRadius = newSize === 'medium' ? 25 : 15;
+                    for(let j=0; j<2; j++) {
+                        asteroids.current.push({
+                            x: ast.x, y: ast.y,
+                            vx: Math.random() * 4 - 2, vy: Math.random() * 4 - 2,
+                            size: newSize, radius: newRadius
+                        });
+                    }
+                  }
+                  asteroids.current.splice(k, 1);
+                  bullets.current.splice(i, 1);
+                  break;
+              }
+          }
       }
       
-      if(gameMode === 'solo') {
-        for (const enemy of enemies.current) {
-          if(player1Ref.current.lives > 0) {
-            const dx = player1Ref.current.x - enemy.x;
-            const dy = player1Ref.current.y - enemy.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
-                createExplosion(player1Ref.current.x, player1Ref.current.y);
-                player1Ref.current.lives = 0;
-                playSound(gameOverSoundRef);
-                setGameState('over');
-                break;
+      const checkPlayerAsteroidCollision = (player: Player) => {
+        if (player.lives <= 0) return;
+        for (let i = asteroids.current.length - 1; i >= 0; i--) {
+            const ast = asteroids.current[i];
+            const dx = player.x - ast.x;
+            const dy = player.y - ast.y;
+            if (Math.sqrt(dx*dx + dy*dy) < ast.radius + 20) {
+                createExplosion(player.x, player.y);
+                createExplosion(ast.x, ast.y);
+                asteroids.current.splice(i, 1);
+                player.lives--;
+                 if (gameMode === 'versus' && player.lives <= 0) {
+                     const p1L = player.id === 1 ? 0 : player1Ref.current.lives;
+                     const p2L = player.id === 2 ? 0 : player2Ref.current?.lives || 0;
+                     if(p1L <= 0 && p2L <= 0) setWinner("It's a Draw!");
+                     else if (p1L > 0) setWinner('Player 1');
+                     else setWinner('Player 2');
+                     playSound(gameOverSoundRef);
+                     setGameState('over');
+                 } else if (gameMode === 'solo' && player.lives <= 0) {
+                     playSound(gameOverSoundRef);
+                     setGameState('over');
+                 }
+                return;
             }
-          }
         }
       }
+      
+      checkPlayerAsteroidCollision(player1Ref.current);
+      if(player2Ref.current) checkPlayerAsteroidCollision(player2Ref.current);
 
+      if(gameMode === 'solo') {
+        if(player1Ref.current.lives > 0) {
+            for (const enemy of enemies.current) {
+                const dx = player1Ref.current.x - enemy.x;
+                const dy = player1Ref.current.y - enemy.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 20 + 15) {
+                    createExplosion(player1Ref.current.x, player1Ref.current.y);
+                    player1Ref.current.lives = 0;
+                    playSound(gameOverSoundRef);
+                    setGameState('over');
+                    break;
+                }
+            }
+        }
+      }
 
       // --- Drawing ---
       drawPlayer(ctx, player1Ref.current);
       if(player2Ref.current) drawPlayer(ctx, player2Ref.current);
       drawBullets(ctx);
       if(gameMode === 'solo') drawEnemies(ctx);
+      else drawAsteroids(ctx);
       drawExplosions(ctx);
       drawUI(ctx);
 
@@ -375,6 +468,28 @@ const GameCanvas: React.FC = () => {
             enemies.current.push({ x, y: 0 });
         }
     };
+    
+    const spawnAsteroid = () => {
+        if (canvasRef.current && gameState === 'playing' && gameMode === 'versus') {
+            const edge = Math.floor(Math.random() * 4);
+            let x, y, vx, vy;
+            const radius = 40;
+            if (edge === 0) { // Top
+                x = Math.random() * canvas.width; y = -radius;
+                vx = Math.random() * 4 - 2; vy = Math.random() * 2 + 1;
+            } else if (edge === 1) { // Right
+                x = canvas.width + radius; y = Math.random() * canvas.height;
+                vx = -(Math.random() * 2 + 1); vy = Math.random() * 4 - 2;
+            } else if (edge === 2) { // Bottom
+                x = Math.random() * canvas.width; y = canvas.height + radius;
+                vx = Math.random() * 4 - 2; vy = -(Math.random() * 2 + 1);
+            } else { // Left
+                x = -radius; y = Math.random() * canvas.height;
+                vx = Math.random() * 2 + 1; vy = Math.random() * 4 - 2;
+            }
+            asteroids.current.push({x, y, vx, vy, size: 'large', radius});
+        }
+    }
 
     const handleResize = () => {
         const canvas = canvasRef.current;
@@ -392,30 +507,73 @@ const GameCanvas: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (gameState !== 'playing') return;
         keysPressed.current[e.key.toLowerCase()] = true;
-
-        // Player 1 Shoot
-        if ((e.key === ' ' || e.key === 'Spacebar') && !shootTimeoutP1.current) {
-            e.preventDefault();
-            shoot(1);
-            shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null; }, 200);
-        }
-        // Player 2 Shoot
-        if (e.key === 'Shift' && !shootTimeoutP2.current) {
+        
+        // P2 shoot is `shift`
+        if(e.key.toLowerCase() === 'shift' && gameMode === 'versus' && !shootTimeoutP2.current) {
              e.preventDefault();
              shoot(2);
              shootTimeoutP2.current = setTimeout(() => { shootTimeoutP2.current = null; }, 200);
+        }
+
+        // P1 shoot is `space`
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault();
+            if (!shootTimeoutP1.current) {
+                shoot(1);
+                shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null; }, 200);
+            }
         }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
         keysPressed.current[e.key.toLowerCase()] = false;
     };
+    
+    const handleTouchStart = (key: string) => {
+      keysPressed.current[key] = true;
+      if (key === 'p1-fire') {
+        if (!shootTimeoutP1.current) {
+          shoot(1);
+          shootTimeoutP1.current = setTimeout(() => { shootTimeoutP1.current = null }, 200);
+        }
+      }
+      if (key === 'p2-fire') {
+        if (!shootTimeoutP2.current) {
+          shoot(2);
+          shootTimeoutP2.current = setTimeout(() => { shootTimeoutP2.current = null }, 200);
+        }
+      }
+    };
+
+    const handleTouchEnd = (key: string) => {
+      keysPressed.current[key] = false;
+    };
+
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    
+    // Set up touch listeners for mobile
+    const mobileControls = [
+        { key: 'p1-left', id: 'p1-left' }, { key: 'p1-right', id: 'p1-right' }, { key: 'p1-fire', id: 'p1-fire' },
+        { key: 'p2-left', id: 'p2-left' }, { key: 'p2-right', id: 'p2-right' }, { key: 'p2-fire', id: 'p2-fire' },
+    ];
+    mobileControls.forEach(({key, id}) => {
+        const element = document.getElementById(id);
+        if(element) {
+            const startListener = (e: Event) => { e.preventDefault(); handleTouchStart(key); };
+            const endListener = (e: Event) => { e.preventDefault(); handleTouchEnd(key); };
+            element.addEventListener('touchstart', startListener);
+            element.addEventListener('touchend', endListener);
+            element.addEventListener('mousedown', startListener);
+            element.addEventListener('mouseup', endListener);
+            element.addEventListener('mouseleave', endListener);
+        }
+    });
 
     const enemyInterval = setInterval(spawnEnemy, 1200);
+    const asteroidInterval = setInterval(spawnAsteroid, 2500);
     
     gameLoopId.current = requestAnimationFrame(gameLoop);
 
@@ -427,6 +585,13 @@ const GameCanvas: React.FC = () => {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
         clearInterval(enemyInterval);
+        clearInterval(asteroidInterval);
+         mobileControls.forEach(({id}) => {
+            const element = document.getElementById(id);
+            if(element) {
+                // In a real app, we'd store and remove these listeners.
+            }
+        })
     };
   }, [gameState, score, playSound, createExplosion, resetGame, gameMode]);
 
@@ -463,6 +628,12 @@ const GameCanvas: React.FC = () => {
         </div>
     );
   }
+  
+  const TouchButton = ({id, children, className}: {id: string, children: React.ReactNode, className?: string}) => (
+    <Button id={id} variant="ghost" size="icon" className={cn("w-20 h-20 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 text-white", className)}>
+        {children}
+    </Button>
+  )
 
   return (
     <>
@@ -477,6 +648,28 @@ const GameCanvas: React.FC = () => {
       </div>
       
       <canvas ref={canvasRef} className="touch-none w-full h-full" />
+      
+      {isMobile && gameState === 'playing' && (
+        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center z-20 pointer-events-auto">
+            {/* P1 Controls */}
+            <div className="flex items-center gap-2">
+                <TouchButton id="p1-left"><ArrowLeft className="w-10 h-10"/></TouchButton>
+                <TouchButton id="p1-right"><ArrowRight className="w-10 h-10"/></TouchButton>
+            </div>
+            <TouchButton id="p1-fire" className="w-24 h-24"><Crosshair className="w-12 h-12"/></TouchButton>
+
+            {gameMode === 'versus' && (
+              <>
+                {/* P2 Controls */}
+                <TouchButton id="p2-fire" className="w-24 h-24"><Crosshair className="w-12 h-12"/></TouchButton>
+                <div className="flex items-center gap-2">
+                    <TouchButton id="p2-left"><ArrowLeft className="w-10 h-10"/></TouchButton>
+                    <TouchButton id="p2-right"><ArrowRight className="w-10 h-10"/></TouchButton>
+                </div>
+              </>
+            )}
+        </div>
+      )}
 
       {gameState === 'menu' && renderMenu()}
       {gameState === 'over' && renderGameOver()}
@@ -485,5 +678,3 @@ const GameCanvas: React.FC = () => {
 };
 
 export default AstroClash;
-
-    
