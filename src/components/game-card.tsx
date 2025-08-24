@@ -1,8 +1,11 @@
+'use client';
+
 import Link from "next/link";
 import Image from "next/image";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
+import { useState, useEffect } from "react";
 
 type Game = {
   slug: string;
@@ -18,17 +21,31 @@ type GameCardProps = {
 };
 
 export default function GameCard({ game }: GameCardProps) {
+  const [imageUrl, setImageUrl] = useState(game.image);
+
+  useEffect(() => {
+    try {
+      const storedImage = localStorage.getItem(`game-image-${game.slug}`);
+      if (storedImage) {
+        setImageUrl(storedImage);
+      }
+    } catch (e) {
+        console.error("Could not access localStorage", e);
+    }
+  }, [game.slug]);
+
   return (
     <Link href={`/games/${game.slug}`} className="group block">
       <Card className="h-full overflow-hidden transition-all duration-300 ease-in-out group-hover:shadow-lg group-hover:border-primary">
         <CardHeader className="p-0">
           <div className="relative h-48 w-full">
             <Image
-              src={game.image}
+              src={imageUrl}
               alt={game.title}
               fill
               className="object-cover transition-transform duration-300 ease-in-out group-hover:scale-105"
               data-ai-hint={game.hint}
+              unoptimized={imageUrl.startsWith('data:image')} // Next.js needs this for data URIs
             />
           </div>
         </CardHeader>

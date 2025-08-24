@@ -10,10 +10,19 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { Image as ImageIcon, Sparkles } from 'lucide-react'
 import Image from 'next/image'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const initialState: FormState = {
   message: '',
 }
+
+const games = [
+    { slug: "astro-clash", title: "Astro Clash" },
+    { slug: "build-n-bounce", title: "Build 'n' Bounce" },
+    { slug: "kart-havoc", title: "Kart Havoc" },
+    { slug: "soccer-scramble", title: "Soccer Scramble" },
+    { slug: "goblin-gold-grab", title: "Goblin Gold Grab" },
+]
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -43,16 +52,40 @@ export default function ImageGeneratorForm() {
         variant: 'destructive',
       })
     }
-    if (state.data) {
+    if (state.data?.imageUrl && state.data?.gameSlug) {
       toast({
         title: 'Success!',
-        description: 'Your image has been generated below.',
+        description: 'Your image has been generated below and updated on the home page.',
       })
+      // Save to localStorage
+      try {
+        localStorage.setItem(`game-image-${state.data.gameSlug}`, state.data.imageUrl)
+      } catch (e) {
+        console.error("Failed to save image to localStorage", e)
+        toast({
+            title: 'Could not save image',
+            description: 'Your browser may be out of space or in private mode.',
+            variant: 'destructive',
+        })
+      }
     }
   }, [state, toast])
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="gameSlug">Game</Label>
+        <Select name="gameSlug" defaultValue={state.fields?.gameSlug}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select a game to generate an image for..." />
+          </SelectTrigger>
+          <SelectContent>
+            {games.map(game => (
+              <SelectItem key={game.slug} value={game.slug}>{game.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="prompt">Image Prompt</Label>
         <Input

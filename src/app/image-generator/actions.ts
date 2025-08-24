@@ -5,6 +5,7 @@ import { generateImage } from '@/ai/flows/image-generation'
 
 const formSchema = z.object({
   prompt: z.string().min(3, "Please enter a more descriptive prompt (at least 3 characters)."),
+  gameSlug: z.string().min(1, "Please select a game."),
 })
 
 export type FormState = {
@@ -13,6 +14,7 @@ export type FormState = {
   issues?: string[]
   data?: {
     imageUrl: string
+    gameSlug: string
   }
 }
 
@@ -27,6 +29,7 @@ export async function onGenerate(prevState: FormState, data: FormData): Promise<
       issues,
       fields: {
         prompt: formData.prompt as string,
+        gameSlug: formData.gameSlug as string,
       }
     }
   }
@@ -38,7 +41,10 @@ export async function onGenerate(prevState: FormState, data: FormData): Promise<
     }
     return {
       message: "Successfully generated image!",
-      data: result,
+      data: {
+        imageUrl: result.imageUrl,
+        gameSlug: parsed.data.gameSlug,
+      },
     }
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : "An unknown error occurred.";
