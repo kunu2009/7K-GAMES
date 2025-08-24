@@ -18,12 +18,11 @@ type Body = {
   mass: number;
 };
 
-type TouchState = {
-  moving: boolean;
-  jumping: boolean;
-  x: number;
-  y: number;
-}
+type TouchControlState = {
+  moveLeft: boolean;
+  moveRight: boolean;
+  jump: boolean;
+};
 
 const SoccerScramble: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
@@ -57,8 +56,8 @@ const GameCanvas: React.FC = () => {
   const ballRef = useRef<Body>({ id: 'ball', x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, color: 'white', friction: 0.98, mass: 1 });
   
   const isMobile = useIsMobile();
-  const touchStateP1 = useRef<TouchState>({ moving: false, jumping: false, x: 0, y: 0 });
-  const touchStateP2 = useRef<TouchState>({ moving: false, jumping: false, x: 0, y: 0 });
+  const p1Controls = useRef<TouchControlState>({ moveLeft: false, moveRight: false, jump: false });
+  const p2Controls = useRef<TouchControlState>({ moveLeft: false, moveRight: false, jump: false });
 
   const gameLoopId = useRef<number>();
   const countdownTimer = useRef<number>(3);
@@ -101,7 +100,7 @@ const GameCanvas: React.FC = () => {
             const canvas = canvasRef.current;
             if (canvas) resetPositions(canvas);
             setCountdown(3);
-            countdownTimer.current = 3;
+            countdownTimer.current = 3.99;
         }
         return newScores;
     });
@@ -159,49 +158,60 @@ const GameCanvas: React.FC = () => {
       keysPressed.current[e.key.toLowerCase()] = false;
     };
     
-    const handleTouchEvent = (e: TouchEvent) => {
-        e.preventDefault();
+    const processTouches = (e: TouchEvent) => {
         const rect = canvas.getBoundingClientRect();
-        touchStateP1.current = { moving: false, jumping: false, x: 0, y: 0 };
-        touchStateP2.current = { moving: false, jumping: false, x: 0, y: 0 };
+        p1Controls.current = { moveLeft: false, moveRight: false, jump: false };
+        p2Controls.current = { moveLeft: false, moveRight: false, jump: false };
 
         for (let i = 0; i < e.touches.length; i++) {
             const touch = e.touches[i];
             const x = touch.clientX - rect.left;
             const y = touch.clientY - rect.top;
-
-            // Player 1 controls (left half)
+            
+            // Player 1 (Left side of screen)
             if (x < canvas.width / 2) {
-                if (y < canvas.height / 2) { // Top half for jump
-                    touchStateP1.current.jumping = true;
-                } else { // Bottom half for move
-                    touchStateP1.current.moving = true;
-                    if(x < canvas.width / 4) touchStateP1.current.x = -1; // Move left
-                    else touchStateP1.current.x = 1; // Move right
+                if (y < canvas.height / 2) {
+                    p1Controls.current.jump = true;
+                } else {
+                     if (x < canvas.width / 4) p1Controls.current.moveLeft = true;
+                     else p1Controls.current.moveRight = true;
                 }
             } 
-            // Player 2 controls (right half)
+            // Player 2 (Right side of screen)
             else {
-                 if (y < canvas.height / 2) { // Top half for jump
-                    touchStateP2.current.jumping = true;
-                } else { // Bottom half for move
-                    touchStateP2.current.moving = true;
-                    if(x < (canvas.width / 4) * 3) touchStateP2.current.x = -1; // Move left
-                    else touchStateP2.current.x = 1; // Move right
+                if (y < canvas.height / 2) {
+                    p2Controls.current.jump = true;
+                } else {
+                    if (x < (canvas.width * 3) / 4) p2Controls.current.moveLeft = true;
+                    else p2Controls.current.moveRight = true;
                 }
             }
         }
     }
+
+    const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
+        handleStartAction(e);
+        processTouches(e);
+    }
+    const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        processTouches(e);
+    }
+    const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        processTouches(e);
+    }
     
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    canvas.addEventListener('mousedown', handleStartAction);
-    canvas.addEventListener('touchstart', handleStartAction);
-
+    
     if (isMobile) {
-        canvas.addEventListener('touchstart', handleTouchEvent);
-        canvas.addEventListener('touchmove', handleTouchEvent);
-        canvas.addEventListener('touchend', handleTouchEvent);
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    } else {
+        canvas.addEventListener('mousedown', handleStartAction);
     }
 
 
@@ -216,8 +226,9 @@ const GameCanvas: React.FC = () => {
 
       // Player 1 controls
       if (isMobile) {
-          if (touchStateP1.current.moving) player1.vx += MOVE_SPEED * touchStateP1.current.x;
-          if (touchStateP1.current.jumping && player1.y + player1.height >= canvas.height - 1) player1.vy = JUMP_POWER;
+          if (p1Controls.current.moveLeft) player1.vx -= MOVE_SPEED;
+          if (p1Controls.current.moveRight) player1.vx += MOVE_SPEED;
+          if (p1Controls.current.jump && player1.y + player1.height >= canvas.height - 1) player1.vy = JUMP_POWER;
       } else {
           if (keysPressed.current['a']) player1.vx -= MOVE_SPEED;
           if (keysPressed.current['d']) player1.vx += MOVE_SPEED;
@@ -228,8 +239,9 @@ const GameCanvas: React.FC = () => {
       
       // Player 2 controls
       if(isMobile) {
-          if (touchStateP2.current.moving) player2.vx += MOVE_SPEED * touchStateP2.current.x;
-          if (touchStateP2.current.jumping && player2.y + player2.height >= canvas.height - 1) player2.vy = JUMP_POWER;
+          if (p2Controls.current.moveLeft) player2.vx -= MOVE_SPEED;
+          if (p2Controls.current.moveRight) player2.vx += MOVE_SPEED;
+          if (p2Controls.current.jump && player2.y + player2.height >= canvas.height - 1) player2.vy = JUMP_POWER;
       } else {
           if (keysPressed.current['arrowleft']) player2.vx -= MOVE_SPEED;
           if (keysPressed.current['arrowright']) player2.vx += MOVE_SPEED;
@@ -484,12 +496,12 @@ const GameCanvas: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       if(canvas) {
-        canvas.removeEventListener('mousedown', handleStartAction);
-        canvas.removeEventListener('touchstart', handleStartAction);
         if (isMobile) {
-            canvas.removeEventListener('touchstart', handleTouchEvent);
-            canvas.removeEventListener('touchmove', handleTouchEvent);
-            canvas.removeEventListener('touchend', handleTouchEvent);
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
+        } else {
+            canvas.removeEventListener('mousedown', handleStartAction);
         }
       }
 
@@ -499,7 +511,7 @@ const GameCanvas: React.FC = () => {
     };
   }, [gameState, scores, lastGoal, handleGoal, resetPositions, startGame, countdown, isMobile]);
 
-  return <canvas ref={canvasRef} className="touch-none w-full h-full cursor-pointer" />;
+  return <canvas ref={canvasRef} className="touch-none w-full h-full" />;
 };
 
 export default SoccerScramble;
