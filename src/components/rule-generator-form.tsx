@@ -1,13 +1,13 @@
 'use client'
 
-import { useFormState, useFormStatus } from 'react-dom'
+import { useActionState, useEffect, useRef } from 'react'
+import { useFormStatus } from 'react-dom'
 import { onGenerate, type FormState } from '@/app/rules-generator/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { Sparkles } from 'lucide-react'
 
@@ -31,7 +31,7 @@ function SubmitButton() {
 }
 
 export default function RuleGeneratorForm() {
-  const [state, formAction] = useFormState(onGenerate, initialState)
+  const [state, formAction] = useActionState(onGenerate, initialState)
   const { toast } = useToast()
   const formRef = useRef<HTMLFormElement>(null)
 
