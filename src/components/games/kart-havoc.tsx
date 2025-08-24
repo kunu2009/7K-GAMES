@@ -72,8 +72,8 @@ const GameCanvas: React.FC = () => {
   const player1Ref = useRef<Kart>({ id: 1, x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 });
   const player2Ref = useRef<Kart>({ id: 2, x: 0, y: 0, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 });
   
-  const joystick1Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 50}, stick: {x:0, y:0, radius: 25}, active: false, touchId: null });
-  const joystick2Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 50}, stick: {x:0, y:0, radius: 25}, active: false, touchId: null });
+  const joystick1Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 60}, stick: {x:0, y:0, radius: 30}, active: false, touchId: null });
+  const joystick2Ref = useRef<Joystick>({ base: {x:0, y:0, radius: 60}, stick: {x:0, y:0, radius: 30}, active: false, touchId: null });
 
   const resetKarts = useCallback(() => {
     const canvas = canvasRef.current;
@@ -84,7 +84,6 @@ const GameCanvas: React.FC = () => {
     player1Ref.current = { id: 1, x: startX - 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#4285F4', laps: 0, lastCheckpoint: 0 };
     player2Ref.current = { id: 2, x: startX + 40, y: startY, angle: -Math.PI / 2, speed: 0, color: '#DB4437', laps: 0, lastCheckpoint: 0, targetWaypoint: 0 };
     
-    // Reset AI state as well
     if(gameMode === 'ai' && player2Ref.current) {
         player2Ref.current.lastCheckpoint = 0;
         player2Ref.current.laps = 0;
@@ -164,9 +163,9 @@ const GameCanvas: React.FC = () => {
 
   const drawTrack = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     const isPortrait = canvas.height > canvas.width;
-    const trackWidth = isMobile ? 140 : 180;
-    const marginX = isPortrait ? 20 : canvas.width * 0.1;
-    const marginY = isPortrait ? 100 : canvas.height * 0.1;
+    const trackWidth = isMobile ? 120 : 180;
+    const marginX = isPortrait ? 40 : canvas.width * 0.1;
+    const marginY = isPortrait ? 150 : canvas.height * 0.1;
 
     const outerWidth = canvas.width - marginX * 2;
     const outerHeight = canvas.height - marginY * 2;
@@ -179,9 +178,7 @@ const GameCanvas: React.FC = () => {
         const innerRectW = outerWidth - trackWidth * 2;
         const innerRectH = outerHeight - trackWidth * 2;
 
-        // Outer boundary
         path.rect(marginX, marginY, outerWidth, outerHeight);
-        // Inner boundary (creates the hole)
         path.rect(innerRectX, innerRectY, innerRectW, innerRectH);
         
         trackPathRef.current = path;
@@ -198,14 +195,14 @@ const GameCanvas: React.FC = () => {
         trackWaypointsRef.current = [...waypoints]; 
 
         const startLineY = marginY + outerHeight - trackWidth;
-        finishLineRef.current = { x1: innerRectX, y1: startLineY, x2: marginX + outerWidth, y2: startLineY };
+        const startLineX1 = innerRectX;
+        const startLineX2 = marginX + outerWidth;
+        finishLineRef.current = { x1: startLineX1, y1: startLineY, x2: startLineX2, y2: startLineY };
     }
      
-    // Draw asphalt
     ctx.fillStyle = '#4A4A4A';
     ctx.fill(trackPathRef.current, 'evenodd');
 
-    // Draw track borders
     ctx.strokeStyle = '#BDBDBD';
     ctx.lineWidth = 10;
     const innerRectX = marginX + trackWidth;
@@ -215,7 +212,6 @@ const GameCanvas: React.FC = () => {
     ctx.strokeRect(marginX, marginY, outerWidth, outerHeight);
     ctx.strokeRect(innerRectX, innerRectY, innerRectW, innerRectH);
     
-    // Draw finish line
     if(finishLineRef.current) {
         const line = finishLineRef.current;
         const squareSize = 10;
@@ -234,12 +230,10 @@ const GameCanvas: React.FC = () => {
     [joystick1Ref.current, joystick2Ref.current].forEach(joy => {
         if (!joy.active) return;
         ctx.save();
-        // Base
         ctx.beginPath();
         ctx.arc(joy.base.x, joy.base.y, joy.base.radius, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
         ctx.fill();
-        // Stick
         ctx.beginPath();
         ctx.arc(joy.stick.x, joy.stick.y, joy.stick.radius, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
@@ -253,9 +247,9 @@ const GameCanvas: React.FC = () => {
     if (waypoints.length === 0 || kart.targetWaypoint === undefined) return;
 
     const difficultySettings = {
-        easy: { speed: 4.0, turnRate: 0.04, precision: 100 },
-        medium: { speed: 5.0, turnRate: 0.06, precision: 75 },
-        hard: { speed: 6.0, turnRate: 0.08, precision: 50 }
+        easy: { speed: 3.8, turnRate: 0.04, precision: 100 },
+        medium: { speed: 4.5, turnRate: 0.06, precision: 75 },
+        hard: { speed: 5.5, turnRate: 0.08, precision: 50 }
     };
     const settings = difficultySettings[aiDifficulty];
     
@@ -267,9 +261,7 @@ const GameCanvas: React.FC = () => {
     if (distance < settings.precision) {
         kart.targetWaypoint = (kart.targetWaypoint + 1) % waypoints.length;
     }
-    // Make AI always target the next waypoint
     target = waypoints[kart.targetWaypoint];
-
 
     const targetAngle = Math.atan2(target.y - kart.y, target.x - kart.x) + Math.PI / 2;
     let angleDiff = targetAngle - kart.angle;
@@ -298,20 +290,19 @@ const GameCanvas: React.FC = () => {
       p2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' },
     };
     
-    // --- Update Controls ---
     let p1Acceleration = 0;
     let p1Turn = 0;
     let p2Acceleration = 0;
     let p2Turn = 0;
 
-    const maxSpeed = isMobile ? 4.5 : 6;
+    const maxSpeed = isMobile ? 4.5 : 5.5;
 
     if (isMobile) {
         const joy1 = joystick1Ref.current;
         if(joy1.active) {
             const dx = joy1.stick.x - joy1.base.x;
             const dy = joy1.stick.y - joy1.base.y;
-            p1Turn = dx / joy1.base.radius * 0.06;
+            p1Turn = dx / joy1.base.radius * 0.05;
             p1Acceleration = -dy / joy1.base.radius * 0.25;
         }
         if(gameMode === '2p'){
@@ -319,42 +310,41 @@ const GameCanvas: React.FC = () => {
              if(joy2.active) {
                 const dx = joy2.stick.x - joy2.base.x;
                 const dy = joy2.stick.y - joy2.base.y;
-                p2Turn = dx / joy2.base.radius * 0.06;
+                p2Turn = dx / joy2.base.radius * 0.05;
                 p2Acceleration = -dy / joy2.base.radius * 0.25;
             }
         }
     } 
     
-    if (!isMobile || gameMode === 'ai') { // Keyboard for P1 always, and P2 if not AI
+    if (!isMobile || gameMode === 'ai') { 
         if (keysPressed.current[controls.p1.up]) p1Acceleration = 0.25;
         if (keysPressed.current[controls.p1.down]) p1Acceleration = -0.2;
-        if (keysPressed.current[controls.p1.left]) p1Turn = -0.04;
-        if (keysPressed.current[controls.p1.right]) p1Turn = 0.04;
+        if (keysPressed.current[controls.p1.left]) p1Turn = -0.05;
+        if (keysPressed.current[controls.p1.right]) p1Turn = 0.05;
     }
 
-    if (!isMobile && gameMode === '2p') { // Keyboard for P2
+    if (!isMobile && gameMode === '2p') { 
         if (keysPressed.current[controls.p2.up]) p2Acceleration = 0.25;
         if (keysPressed.current[controls.p2.down]) p2Acceleration = -0.2;
-        if (keysPressed.current[controls.p2.left]) p2Turn = -0.04;
-        if (keysPressed.current[controls.p2.right]) p2Turn = 0.04;
+        if (keysPressed.current[controls.p2.left]) p2Turn = -0.05;
+        if (keysPressed.current[controls.p2.right]) p2Turn = 0.05;
     }
 
     const p1 = player1Ref.current;
     p1.speed += p1Acceleration;
-    p1.speed *= 0.96; // Slightly more friction for better control
-    p1.speed = Math.max(-3, Math.min(maxSpeed, p1.speed));
+    p1.speed *= 0.97;
+    p1.speed = Math.max(-2, Math.min(maxSpeed, p1.speed));
     if (Math.abs(p1.speed) > 0.1) {
         p1.angle += p1Turn * (p1.speed / maxSpeed);
     }
 
-    // Update P2 (Human or AI)
     const p2 = player2Ref.current;
     if (gameMode === 'ai') {
         updateAI(p2);
     } else {
         p2.speed += p2Acceleration;
-        p2.speed *= 0.96;
-        p2.speed = Math.max(-3, Math.min(maxSpeed, p2.speed));
+        p2.speed *= 0.97;
+        p2.speed = Math.max(-2, Math.min(maxSpeed, p2.speed));
         if (Math.abs(p2.speed) > 0.1) {
             p2.angle += p2Turn * (p2.speed / maxSpeed);
         }
@@ -365,21 +355,18 @@ const GameCanvas: React.FC = () => {
         kart.x += Math.sin(kart.angle) * kart.speed;
         kart.y -= Math.cos(kart.angle) * kart.speed;
 
-        // --- Physics & Rules ---
         const ctx = canvas.getContext('2d');
         if(ctx && trackPathRef.current && !ctx.isPointInPath(trackPathRef.current, kart.x, kart.y, 'evenodd')) {
-          kart.speed *= 0.9;
           kart.x -= Math.sin(kart.angle) * kart.speed;
           kart.y += Math.cos(kart.angle) * kart.speed;
           kart.speed *= -0.5; // Bounce effect
         }
 
-        // Collision with other kart
         const otherKart = kart.id === 1 ? p2 : p1;
         const dx = kart.x - otherKart.x;
         const dy = kart.y - otherKart.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < KART_HEIGHT) {
+        if (dist < KART_HEIGHT * 0.8) {
             const tempSpeed = kart.speed;
             kart.speed = otherKart.speed * 0.8;
             otherKart.speed = tempSpeed * 0.8;
@@ -391,7 +378,6 @@ const GameCanvas: React.FC = () => {
             otherKart.y -= (dy / dist) * overlap;
         }
         
-        // Lap counting
         const finishLine = finishLineRef.current;
         if(finishLine) {
             const isCrossing = kart.x > finishLine.x1 && kart.x < finishLine.x2;
@@ -406,7 +392,6 @@ const GameCanvas: React.FC = () => {
                     setGameState('over');
                 }
             }
-             // Simple checkpoint system to enforce direction
             if (kart.y < canvas.height * 0.4) {
                  kart.lastCheckpoint = 1;
             }
@@ -425,16 +410,9 @@ const GameCanvas: React.FC = () => {
           canvasRef.current.width = parent.clientWidth;
           canvasRef.current.height = parent.clientHeight;
       }
-      trackPathRef.current = null; // Force track redraw
+      trackPathRef.current = null;
       drawTrack(canvas.getContext('2d')!, canvas);
       resetKarts();
-      // Setup joysticks for mobile
-      if(isMobile) {
-          joystick1Ref.current.base.x = canvas.width * 0.25;
-          joystick1Ref.current.base.y = canvas.height - 80;
-          joystick2Ref.current.base.x = canvas.width * 0.75;
-          joystick2Ref.current.base.y = canvas.height - 80;
-      }
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -447,21 +425,14 @@ const GameCanvas: React.FC = () => {
         const touches = e.changedTouches;
         for(let i=0; i < touches.length; i++) {
             const touch = touches[i];
-            if(touch.clientX < canvas.width/2) { // P1
-                joystick1Ref.current.active = true;
-                joystick1Ref.current.touchId = touch.identifier;
-                joystick1Ref.current.base.x = touch.clientX;
-                joystick1Ref.current.base.y = touch.clientY;
-                joystick1Ref.current.stick.x = touch.clientX;
-                joystick1Ref.current.stick.y = touch.clientY;
-            } else { // P2
-                joystick2Ref.current.active = true;
-                joystick2Ref.current.touchId = touch.identifier;
-                joystick2Ref.current.base.x = touch.clientX;
-                joystick2Ref.current.base.y = touch.clientY;
-                joystick2Ref.current.stick.x = touch.clientX;
-                joystick2Ref.current.stick.y = touch.clientY;
-            }
+            const joy = touch.clientX < canvas.width/2 ? joystick1Ref.current : joystick2Ref.current;
+
+            joy.active = true;
+            joy.touchId = touch.identifier;
+            joy.base.x = touch.clientX;
+            joy.base.y = touch.clientY;
+            joy.stick.x = touch.clientX;
+            joy.stick.y = touch.clientY;
         }
     };
     const handleTouchMove = (e: TouchEvent) => {
@@ -522,7 +493,6 @@ const GameCanvas: React.FC = () => {
       drawKart(ctx, player1Ref.current);
       drawKart(ctx, player2Ref.current);
       
-      // Draw UI
       ctx.fillStyle = "white";
       ctx.font = "bold 24px 'Space Grotesk', sans-serif";
       ctx.textAlign = 'left';
@@ -592,7 +562,7 @@ const GameCanvas: React.FC = () => {
     if (gameState === 'countdown') {
         return (
             <div className="absolute inset-0 bg-black/70 flex items-center justify-center pointer-events-none">
-                 <p className="text-9xl font-bold animate-fade-in">{countdown > 0 ? countdown : "GO!"}</p>
+                 <p className="text-9xl font-bold animate-fade-in-out">{countdown > 0 ? countdown : "GO!"}</p>
             </div>
         )
     }
@@ -611,3 +581,5 @@ const GameCanvas: React.FC = () => {
 };
 
 export default KartHavoc;
+
+    
